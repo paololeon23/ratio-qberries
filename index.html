@@ -1,0 +1,400 @@
+﻿<!DOCTYPE html>
+<html lang="es-PE">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#4ab848" />
+  <meta name="color-scheme" content="light only" />
+  <meta name="description" content="Q Berries - Reportes de jarras Licapa en campo" />
+  <meta name="application-name" content="Q Berries Reportes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Q Berries" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="assets/icon-512.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css?v=m140" />
+  <title>Q Berries · Reportes</title>
+  <script>
+    if (location.protocol === 'file:') {
+      document.documentElement.classList.add('is-file-protocol');
+    } else {
+      var l = document.createElement('link');
+      l.rel = 'manifest';
+      l.href = 'manifest.webmanifest';
+      document.head.appendChild(l);
+    }
+  </script>
+</head>
+<body>
+  <div id="fileProtocolGate" class="file-protocol-gate" hidden>
+    <article class="file-protocol-card">
+      <p class="file-protocol-kicker"><img src="./assets/icon-192.png" alt="Q Berries" class="file-protocol-logo" /> Reportes</p>
+      <h2>No abras el archivo directo</h2>
+      <p>Windows bloquea los datos si abres <code>index.html</code> con doble clic (<code>file://</code>).</p>
+      <p><strong>Para ver la app:</strong></p>
+      <ol>
+        <li>Abre la carpeta en VS Code / Cursor</li>
+        <li>Usa <strong>Live Server</strong> → “Open with Live Server”</li>
+        <li>O publica en Netlify; la app lee la API de Google Sheets</li>
+      </ol>
+      <p class="file-protocol-alt">No abras <code>index.html</code> con doble clic (<code>file://</code>).</p>
+    </article>
+  </div>
+
+  <div class="app-shell">
+  <header class="app-header">
+    <div class="header-row">
+      <div class="brand-block">
+        <div class="brand-mark-wrap" title="Q Berries">
+          <img
+            class="brand-mark"
+            src="./assets/logo-qberries.png"
+            alt="Q Berries"
+            width="52"
+            height="52"
+            decoding="async"
+            onerror="this.onerror=null;this.src='./assets/icon-192.png'"
+          />
+        </div>
+        <div class="brand-text">
+          <p class="brand-kicker">Q Berries</p>
+          <h1>Reportes</h1>
+          <p class="brand-sub">Avance de jarras · Licapa</p>
+        </div>
+      </div>
+      <div class="status-pills" aria-live="polite">
+        <span id="netPill" class="status-chip is-live" title="Datos en vivo · reportes actualizados">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="status-text">EN VIVO</span>
+        </span>
+        <button
+          type="button"
+          id="btnRefresh"
+          class="status-chip status-chip-btn is-refresh"
+          title="Actualizar datos desde Google Sheets (API)"
+          aria-label="Actualizar reporte"
+        >
+          <span class="status-ico" id="icoRefresh" aria-hidden="true"></span>
+          <span class="status-text">Actualizar</span>
+        </button>
+      </div>
+    </div>
+    <div class="header-accent" aria-hidden="true"></div>
+  </header>
+
+  <section class="hero-summary" id="heroSummary" aria-live="polite"></section>
+
+  <nav class="report-nav" aria-label="Secciones del reporte">
+    <button type="button" class="report-tab is-active" data-tab="resumen" title="Resumen del día" aria-label="Resumen">
+      <span class="tab-label">Resumen</span>
+    </button>
+    <button type="button" class="report-tab" data-tab="grupos" title="Mapa de grupos LIC" aria-label="Grupos">
+      <span class="tab-label">Grupos</span>
+    </button>
+    <button type="button" class="report-tab" data-tab="personas" title="Personas del día" aria-label="Personas">
+      <span class="tab-label">Personas</span>
+    </button>
+    <button type="button" class="report-tab" data-tab="avance" title="Avance y gráficos" aria-label="Avance">
+      <span class="tab-label">Avance</span>
+    </button>
+  </nav>
+
+  <div class="report-panels">
+    <section class="report-panel is-active" id="panelResumen" data-panel="resumen">
+      <section class="panel attn-panel" id="secAtencion" aria-label="Atención supervisora" title="Alertas urgentes del día">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-orange" data-title-ico="bell" aria-hidden="true"></span>
+            <div>
+              <h2>Atención</h2>
+              <p class="muted">Solo lo urgente del día</p>
+            </div>
+          </div>
+        </div>
+        <div class="attn-list" id="attnList"></div>
+      </section>
+
+      <section class="panel people-panel" id="secPersonas" title="Ranking de personas con más jarras">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-red" data-title-ico="trophy" aria-hidden="true"></span>
+            <div>
+              <h2>Top del día</h2>
+              <p class="muted">Personas con más jarras · toca para detalle</p>
+            </div>
+          </div>
+        </div>
+        <div class="people-rail" id="peopleRail" aria-label="Top trabajadores"></div>
+      </section>
+
+      <div class="charts-grid" aria-label="Gráficos prioritarios">
+        <section class="panel chart-panel chart-panel-wide" title="Lotes con más jarras">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-red" data-title-ico="sparkles" aria-hidden="true"></span>
+              <div>
+                <h2>¿En qué lote se sacan más jarras?</h2>
+                <p class="muted">Top lotes del día · mayor carga de cosecha</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartTopLotes" title="Descargar imagen del gráfico" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartTopLotes" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-same" id="chartTopLotes"></div>
+          <p class="chart-insight" id="insightTopLotes"></p>
+        </section>
+
+        <section class="panel chart-panel chart-panel-wide" title="LIC con más producción">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-green" data-title-ico="building" aria-hidden="true"></span>
+              <div>
+                <h2>LIC con más producción</h2>
+                <p class="muted">Grupos con más jarras del día</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartTopLic" title="Descargar imagen del gráfico" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartTopLic" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-same" id="chartTopLic"></div>
+          <p class="chart-insight" id="insightTopLic"></p>
+        </section>
+
+        <section class="panel chart-panel chart-panel-wide" title="Supervisor con más liderazgo">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-lime" data-title-ico="crown" aria-hidden="true"></span>
+              <div>
+                <h2>Supervisor · grupo con más liderazgo</h2>
+                <p class="muted">Mejor ritmo · jarras por persona del grupo</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartLiderazgo" title="Descargar imagen del gráfico" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartLiderazgo" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-same" id="chartLiderazgo"></div>
+          <p class="chart-insight" id="insightLiderazgo"></p>
+        </section>
+
+        <section class="panel chart-panel chart-panel-wide" title="Peores LIC en producción">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-orange" data-title-ico="trendDown" aria-hidden="true"></span>
+              <div>
+                <h2>Los peores LIC en producción</h2>
+                <p class="muted">Grupos con menos jarras · priorizar apoyo</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartPeoresLic" title="Descargar imagen del gráfico" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartPeoresLic" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-same" id="chartPeoresLic"></div>
+          <p class="chart-insight" id="insightPeoresLic"></p>
+        </section>
+      </div>
+    </section>
+
+    <section class="report-panel" id="panelGrupos" data-panel="grupos" hidden>
+      <section class="panel map-panel" title="Mapa de grupos LIC con supervisor">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-lime" data-title-ico="building" aria-hidden="true"></span>
+            <div>
+              <h2>Mapa de grupos LIC</h2>
+              <p class="muted" id="gruposMeta">Avance del día · con jefe / supervisor</p>
+            </div>
+          </div>
+        </div>
+        <div class="workers-search">
+          <span class="workers-search-ico" id="gruposSearchIco" aria-hidden="true"></span>
+          <input
+            id="buscaGrupoMap"
+            class="search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="Buscar grupo o supervisor…"
+            aria-label="Buscar grupo o supervisor"
+            title="Buscar grupo LIC o nombre del supervisor"
+          />
+        </div>
+        <div class="grupo-map" id="grupoMap" role="list"></div>
+      </section>
+    </section>
+
+    <section class="report-panel" id="panelPersonas" data-panel="personas" hidden>
+      <section class="panel workers-panel" id="secTrabajadores" aria-label="Trabajadores" title="Listado de personas del día">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-orange" data-title-ico="users" aria-hidden="true"></span>
+            <div>
+              <h2>Personas del día</h2>
+              <p class="muted" id="workersMeta">Listado completo · busca por DNI o nombre</p>
+            </div>
+          </div>
+        </div>
+        <div class="workers-search">
+          <span class="workers-search-ico" id="workersSearchIco" aria-hidden="true"></span>
+          <input
+            id="buscaTrabajador"
+            class="search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="Buscar CI o nombre…"
+            aria-label="Buscar trabajador por DNI o nombre"
+            title="Buscar por DNI o nombre"
+          />
+        </div>
+        <div class="workers-list" id="workersList" role="list"></div>
+      </section>
+    </section>
+
+    <section class="report-panel" id="panelAvance" data-panel="avance" hidden>
+      <div class="charts-grid charts-grid--avance" aria-label="Ritmo del día">
+        <section class="panel chart-panel chart-panel-wide thermo-panel" title="Termómetro de jarras por persona">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-red" data-title-ico="gauge" aria-hidden="true"></span>
+              <div>
+                <h2>Termómetro del día</h2>
+                <p class="muted">Promedio de jarras por persona · ritmo general</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartGauge" title="Descargar imagen" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartGauge" title="Compartir" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="thermo-layout">
+            <div class="thermo-visual" id="thermoVisual" aria-hidden="true">
+              <div class="thermo-scale">
+                <span>Alto</span><span>Medio</span><span>Bajo</span>
+              </div>
+              <div class="thermo">
+                <div class="thermo-tube">
+                  <div class="thermo-fill" id="thermoFill"></div>
+                </div>
+                <div class="thermo-bulb" id="thermoBulb"></div>
+              </div>
+              <div class="thermo-readout">
+                <strong id="thermoValue">—</strong>
+                <span>jarras / persona</span>
+                <em id="thermoZone">Sin datos</em>
+              </div>
+            </div>
+            <div class="chart-wrap chart-gauge" id="chartGauge"></div>
+          </div>
+          <p class="chart-insight" id="insightGauge"></p>
+        </section>
+
+        <section class="panel chart-panel chart-panel-wide" title="Distribución de jarras por persona">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-green" data-title-ico="bars" aria-hidden="true"></span>
+              <div>
+                <h2>¿Cómo van las personas?</h2>
+                <p class="muted">Cuántas personas hay en cada rango de jarras</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartDist" title="Descargar imagen" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartDist" title="Compartir" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-same" id="chartDist"></div>
+          <p class="chart-insight" id="insightDist"></p>
+        </section>
+      </div>
+    </section>
+  </div>
+  </div><!-- /.app-shell -->
+
+  <div class="modal-root" id="selectModal" hidden>
+    <div class="modal-backdrop" data-close-select="1"></div>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-body" id="selectModalBody"></div>
+    </div>
+  </div>
+
+  <div class="modal-root" id="modalRoot" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button type="button" class="modal-close" data-close="1" aria-label="Cerrar" title="Cerrar detalle" id="modalCloseBtn"></button>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    class="btn-attn-alarm is-fab"
+    id="btnDataWarn"
+    title="Aviso importante · datos e internet"
+    aria-label="Abrir aviso de datos e internet"
+  >
+    <span class="attn-alarm-ico" aria-hidden="true"></span>
+  </button>
+
+  <div
+    class="install-banner"
+    id="installBanner"
+    hidden
+    role="dialog"
+    aria-labelledby="installTitle"
+    aria-describedby="installCopy"
+  >
+    <button type="button" class="install-close" id="installClose" title="Cerrar" aria-label="Cerrar aviso de instalación">×</button>
+    <div class="install-ico" aria-hidden="true" id="installIco"></div>
+    <div class="install-body">
+      <p class="install-kicker" id="installKicker">Instalar en el celular</p>
+      <h2 class="install-title" id="installTitle">Q Berries Reportes</h2>
+      <p class="install-copy" id="installCopy">Agrega la app a tu pantalla de inicio para abrirla más rápido.</p>
+      <ol class="install-steps" id="installSteps" hidden></ol>
+      <div class="install-actions">
+        <button type="button" class="btn btn-primary btn-with-ico" id="installAction" hidden>
+          <span class="btn-ico" id="installActionIco"></span>
+          <span id="installActionText">Instalar app</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/config.js?v=m140"></script>
+  <script src="js/workers.js?v=m140"></script>
+  <script src="js/api.js?v=m140"></script>
+  <script src="js/icons.js?v=m140"></script>
+  <script src="js/avatars.js?v=m140"></script>
+  <script src="js/supervisors.js?v=m140"></script>
+  <script src="js/charts.js?v=m140"></script>
+  <script src="js/select.js?v=m140"></script>
+  <script src="js/export.js?v=m140"></script>
+  <script src="js/app.js?v=m140"></script>
+  <script>
+    window.addEventListener('error', function (e) {
+      var box = document.getElementById('toastHost');
+      if (!box) return;
+      if (String(e.message || '').indexOf('QB.charts') >= 0 || String(e.message || '').indexOf('charts') >= 0) {
+        box.textContent = 'No cargaron los gráficos (caché vieja). Cierra la pestaña, abre de nuevo o usa Ctrl+Shift+R.';
+        box.className = 'toast-host is-show is-warn';
+      }
+    });
+  </script>
+</body>
+</html>

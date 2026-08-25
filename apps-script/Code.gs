@@ -85,10 +85,11 @@ function todo_(p) {
   var sh = pickSheet_();
   if (!sh) return empty_('SIN_HOJA');
 
-  var values = sh.getDataRange().getValues();
-  if (!values || values.length < 2) return empty_('SIN_FILAS');
+  var lastRow = sh.getLastRow();
+  var lastCol = Math.max(1, sh.getLastColumn());
+  if (lastRow < 2) return empty_('SIN_FILAS');
 
-  var headers = values[0];
+  var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   var iCI = col_(headers, 'CI');
   var iC = col_(headers, 'C');
   var iFP = col_(headers, 'FP');
@@ -104,39 +105,28 @@ function todo_(p) {
   if (iCI < 0) return empty_('FALTA_COLUMNA_CI');
   if (iC < 0 && iFP < 0) return empty_('FALTAN_COLUMNAS_C_O_FP');
 
+  // Solo columnas necesarias (más rápido que getDataRange)
+  var maxCol =
+    Math.max(iCI, iC, iFP, iF, iNom, iApe, iGrupo, iVar, iFecha, iLote, iHuerto) + 1;
+  var values = sh.getRange(1, 1, lastRow, maxCol).getValues();
+  if (!values || values.length < 2) return empty_('SIN_FILAS');
+
   var sheetFecha = parseSheetFecha_(sh.getName());
   var fechaCounts = {};
-  var r, iso;
-
-  if (sheetFecha) {
-    fechaCounts[sheetFecha] = values.length - 1;
-  } else if (iFecha >= 0) {
-    for (r = 1; r < values.length; r++) {
-      iso = fechaIso_(values[r][iFecha]);
-      if (iso) fechaCounts[iso] = (fechaCounts[iso] || 0) + 1;
-    }
-  } else {
-    fechaCounts[hoy_()] = values.length - 1;
-  }
-
-  var fechasOrd = Object.keys(fechaCounts).sort().reverse();
-  var fechaHoy = fechaWant || fechasOrd[0] || hoy_();
-  var fechaAyer = fechasOrd[1] || ayer_();
-
-  var byWorker = {};
+  var byWorkerAll = {}; // fecha|ci
   var byGrupo = {};
   var byVariedad = {};
   var byFecha = {};
   var byModulo = {};
   var byTurno = {};
-  var totalC = 0;
-  var totalFilas = 0;
-  var workersSet = {};
+  var r;
 
+  // Una sola pasada (más rápido)
   for (r = 1; r < values.length; r++) {
     var row = values[r];
-    var rowFecha = sheetFecha ? sheetFecha : iFecha >= 0 ? fechaIso_(row[iFecha]) : fechaHoy;
-    if (rowFecha !== fechaHoy) continue;
+    var rowFecha = sheetFecha ? sheetFecha : iFecha >= 0 ? fechaIso_(row[iFecha]) : hoy_();
+    if (!rowFecha) continue;
+    fechaCounts[rowFecha] = (fechaCounts[rowFecha] || 0) + 1;
 
     var ci = cellCi_(row[iCI]);
     if (!ci) continue;
@@ -146,9 +136,10 @@ function todo_(p) {
     var variedad = iVar >= 0 ? String(row[iVar] || '').trim() : '';
     var nombre = iNom >= 0 ? String(row[iNom] || '').trim() : '';
     var apellido = iApe >= 0 ? String(row[iApe] || '').trim() : '';
+    var key = rowFecha + '|' + ci;
 
-    if (!byWorker[ci]) {
-      byWorker[ci] = {
+    if (!byWorkerAll[key]) {
+      byWorkerAll[key] = {
         fecha: rowFecha,
         ci: ci,
         nombre: nombre,
@@ -163,7 +154,7 @@ function todo_(p) {
         turnos: {}
       };
     }
-    var w = byWorker[ci];
+    var w = byWorkerAll[key];
     w.c += c;
     w.filas += 1;
     if ((!w.nombre || w.nombre === 'S/N') && nombre && nombre !== 'S/N') w.nombre = nombre;
@@ -178,25 +169,27 @@ function todo_(p) {
         var parts = parseLote_(lote);
         if (parts.modulo) {
           w.modulos[parts.modulo] = (w.modulos[parts.modulo] || 0) + c;
-          byModulo[parts.modulo] = (byModulo[parts.modulo] || 0) + c;
         }
         if (parts.turno) {
           w.turnos[parts.turno] = (w.turnos[parts.turno] || 0) + c;
-          byTurno[parts.turno] = (byTurno[parts.turno] || 0) + c;
         }
       }
     }
-
-    byGrupo[grupo] = (byGrupo[grupo] || 0) + c;
-    byVariedad[variedad] = (byVariedad[variedad] || 0) + c;
-    byFecha[rowFecha] = (byFecha[rowFecha] || 0) + c;
-    totalC += c;
-    totalFilas += 1;
-    workersSet[ci] = true;
   }
 
-  var data = Object.keys(byWorker).map(function (k) {
-    var w = byWorker[k];
+  var fechasOrd = Object.keys(fechaCounts).sort().reverse();
+  var fechaHoy = fechaWant || fechasOrd[0] || hoy_();
+  var fechaAyer = fechasOrd[1] || ayer_();
+
+  var totalC = 0;
+  var totalFilas = 0;
+  var workersSet = {};
+  var data = [];
+
+  Object.keys(byWorkerAll).forEach(function (k) {
+    var w = byWorkerAll[k];
+    if (w.fecha !== fechaHoy) return;
+
     var lotesArr = Object.keys(w.lotes)
       .map(function (l) {
         return { lote: l, c: w.lotes[l] };
@@ -204,7 +197,7 @@ function todo_(p) {
       .sort(function (a, b) {
         return b.c - a.c;
       })
-      .slice(0, 8);
+      .slice(0, 5);
     var topMod =
       Object.keys(w.modulos).sort(function (a, b) {
         return w.modulos[b] - w.modulos[a];
@@ -213,7 +206,8 @@ function todo_(p) {
       Object.keys(w.turnos).sort(function (a, b) {
         return w.turnos[b] - w.turnos[a];
       })[0] || '';
-    return {
+
+    data.push({
       fecha: w.fecha,
       ci: w.ci,
       nombre: w.nombre,
@@ -226,8 +220,19 @@ function todo_(p) {
       c: Math.round(w.c * 100) / 100,
       filas: w.filas,
       lotes: lotesArr
-    };
-  }).sort(function (a, b) {
+    });
+
+    byGrupo[w.grupo] = (byGrupo[w.grupo] || 0) + w.c;
+    byVariedad[w.variedad] = (byVariedad[w.variedad] || 0) + w.c;
+    byFecha[w.fecha] = (byFecha[w.fecha] || 0) + w.c;
+    if (topMod) byModulo[topMod] = (byModulo[topMod] || 0) + w.c;
+    if (topTur) byTurno[topTur] = (byTurno[topTur] || 0) + w.c;
+    totalC += w.c;
+    totalFilas += w.filas;
+    workersSet[w.ci] = true;
+  });
+
+  data.sort(function (a, b) {
     return b.c - a.c;
   });
 

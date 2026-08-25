@@ -78,6 +78,8 @@
 
   async function boot() {
     if (location.protocol === 'file:') {
+      hideLoadModal();
+      document.body.classList.add('is-ready');
       showFileProtocolHelp();
       return;
     }
@@ -86,45 +88,83 @@
     updateConnBadge();
     await QB.workers.load();
 
-    /* Pintar cache de inmediato para nunca quedar vacío */
     const cached = QB.api.getCachedPack && QB.api.getCachedPack();
-    if (cached && (cached.data || []).length) {
-      applyPack(cached);
-      updateConnBadge();
-    }
+    const hasCache = !!(cached && (cached.data || []).length);
 
     try {
-      const r = await QB.api.refresh();
-      applyPack(r.pack);
+      if (hasCache) {
+        /* Con cache: app usable al toque; sync en segundo plano */
+        applyPack(cached);
+        revealApp();
+        showSyncBanner(
+          'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
+        );
+        const r = await QB.api.refresh();
+        hideSyncBanner();
+        if ((r.pack.data || []).length) applyPack(r.pack);
+        if (r.changed && !r.error) {
+          flashHero();
+          QB.export.toast('Se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
+        }
+      } else {
+        /* Sin cache: modal completo hasta tener data */
+        showLoadModal('Estamos trayendo la data', 'Espera un momento, por favor…');
+        const r = await QB.api.refresh();
+        if ((r.pack.data || []).length) applyPack(r.pack);
+        revealApp();
+        const n = (r.pack.data && r.pack.data.length) || 0;
+        if (n) QB.export.toast('Listo · ' + n + ' personas', 'ok');
+        else QB.export.toast('Sheet sin filas · pega data en Google Sheets', 'warn');
+      }
+
       QB.api.startDataWatch();
       window.addEventListener('qb:data-updated', (e) => {
         const detail = (e && e.detail) || {};
         const p = detail.pack || QB.api.getCachedPack();
-        if (!p) return;
+        if (!p || !(p.data || []).length) return;
         applyPack(p);
         flashHero();
-        QB.export.toast('Datos nuevos · ' + ((p.data && p.data.length) || 0) + ' personas', 'ok');
+        hideSyncBanner();
+        QB.export.toast('Se actualizó · ' + ((p.data && p.data.length) || 0) + ' personas', 'ok');
       });
       window.addEventListener('qb:data-tick', (e) => {
         const detail = (e && e.detail) || {};
         if (detail.actualizado) state.syncedAt = detail.actualizado;
         updateLiveBadge();
       });
-      const n = (r.pack.data && r.pack.data.length) || 0;
-      if (r.fromCache && r.error) {
-        QB.export.toast('Sin red · mostrando último guardado · ' + n + ' personas', 'warn');
-      } else if (n) {
-        QB.export.toast('Listo · ' + n + ' personas', 'ok');
-      } else {
-        QB.export.toast('Sheet sin filas · pega data en Google Sheets', 'warn');
-      }
     } catch (err) {
-      if (cached && (cached.data || []).length) {
-        QB.export.toast('Sin red · usando cache local', 'warn');
+      if (hasCache) {
+        hideSyncBanner();
+        QB.export.toast('Sin red · sigues con el último guardado', 'warn');
       } else {
+        revealApp();
         QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
       }
+    } finally {
+      hideLoadModal();
+      hideSyncBanner();
+      document.body.classList.add('is-ready');
     }
+  }
+
+  function revealApp() {
+    document.documentElement.classList.add('has-cache');
+    document.body.classList.add('has-cache');
+    document.body.classList.add('is-ready');
+    hideLoadModal();
+    updateConnBadge();
+  }
+
+  function showSyncBanner(text) {
+    const el = $('syncBanner');
+    const t = $('syncBannerText');
+    if (t && text) t.textContent = text;
+    if (el) el.hidden = false;
+  }
+
+  function hideSyncBanner() {
+    const el = $('syncBanner');
+    if (el) el.hidden = true;
   }
 
   function applyPack(pack) {
@@ -460,19 +500,34 @@
   async function manualRefresh() {
     const btn = $('btnRefresh');
     const text = btn && btn.querySelector('.status-text');
+    const hasData = !!(state.rows && state.rows.length);
+
     if (btn) btn.classList.add('is-busy');
     if (text) text.textContent = '…';
+
+    if (!hasData) {
+      /* Sin data en pantalla → modal completo */
+      document.body.classList.remove('is-ready');
+      showLoadModal('Estamos trayendo la data', 'Espera un momento, por favor…');
+    } else {
+      /* Con data → app usable + aviso chico */
+      showSyncBanner(
+        'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
+      );
+    }
+
     try {
       const r = await QB.api.refresh();
-      applyPack(r.pack);
-      flashHero();
-      const n = (r.pack.data && r.pack.data.length) || 0;
-      if (r.fromCache && r.error) {
-        QB.export.toast('Sin cambios de red · cache · ' + n + ' personas', 'warn');
-      } else if (r.changed) {
-        QB.export.toast('Datos nuevos · ' + n + ' personas', 'ok');
-      } else {
-        QB.export.toast('Sin cambios · ' + n + ' personas', 'ok');
+      if ((r.pack.data || []).length || !hasData) {
+        applyPack(r.pack);
+      }
+      if (r.changed && !r.error) {
+        flashHero();
+        QB.export.toast('Se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
+      } else if (!r.error) {
+        /* Sin cambios reales: no molestar con modal, solo cerrar banner */
+      } else if (hasData) {
+        QB.export.toast('Sin red · sigues con lo último', 'warn');
       }
     } catch (err) {
       const cached = QB.api.getCachedPack && QB.api.getCachedPack();
@@ -483,10 +538,31 @@
         QB.export.toast('Error API: ' + (err && err.message ? err.message : 'error'), 'warn');
       }
     } finally {
+      hideLoadModal();
+      hideSyncBanner();
+      document.body.classList.add('is-ready');
       if (btn) btn.classList.remove('is-busy');
       if (text) text.textContent = 'Actualizar';
       updateConnBadge();
     }
+  }
+
+  function showLoadModal(title, copy) {
+    const root = $('loadOverlay');
+    if (!root) return;
+    const t = $('loadTitle');
+    const c = $('loadCopy');
+    if (t && title) t.textContent = title;
+    if (c && copy) c.textContent = copy;
+    root.hidden = false;
+    root.setAttribute('aria-busy', 'true');
+  }
+
+  function hideLoadModal() {
+    const root = $('loadOverlay');
+    if (!root) return;
+    root.hidden = true;
+    root.setAttribute('aria-busy', 'false');
   }
 
   async function refreshMeta(forceLatestDay) {
@@ -550,15 +626,48 @@
     const topG = (k.porGrupo || [])[0];
     const syncAt = shortSyncTime(state.syncedAt || report.actualizado || QB.api.getLastSync() || '');
 
+    const nPeople = people.length || k.totalTrabajadores || 0;
+    const nGrupos = k.totalGrupos || (k.porGrupo || []).length || 0;
+    const tipPeople =
+      `Cosechadores: ${fmt(nPeople)} personas con jarras hoy.\n` +
+      `Promedio ~${fmt(k.promedioCajasPorTrabajador || 0)} jarras por persona.\n` +
+      `Ve el ranking completo en la pestaña Personas.`;
+    const tipGrupos =
+      `Grupos LIC: ${fmt(nGrupos)} activos en campo.\n` +
+      `Cada grupo tiene supervisor asignado.\n` +
+      `Abre la pestaña Grupos para ver el mapa.`;
+    const tipLeader = topG
+      ? `Grupo líder: ${shortGrupo(topG.grupo)}.\n` +
+        `${fmt(topG.c)} jarras (el de más producción hoy).\n` +
+        `Toca Grupos para ver su equipo.`
+      : 'Aún no hay grupo líder con jarras.';
+    const tipTop = top
+      ? `Mejor cosechador: ${QB.avatars.shortName(top)}.\n` +
+        `CI ${top.ci} · ${fmt(top.c)} jarras.\n` +
+        `Grupo ${shortGrupo(top.grupo)}.\n` +
+        `Toca para abrir su detalle.`
+      : 'Aún no hay mejor cosechador.';
+
+    const tipMap = {
+      total:
+        `Total del día: ${fmt(k.totalCajas)} jarras · ${fecha}` +
+        (syncAt ? ` · Act. ${syncAt}` : '') +
+        `\nSuma de todas las jarras registradas en Licapa.`,
+      people: tipPeople,
+      groups: tipGrupos,
+      leader: tipLeader,
+      top: tipTop
+    };
+
     $('heroSummary').innerHTML = `
-      <article class="hero-card report-hero" title="Informe de avance de cosecha">
+      <article class="hero-card report-hero">
         <p class="report-kicker">Fecha de cosecha · ${escapeHtml(fecha)}${
           syncAt ? ` · Act. ${escapeHtml(syncAt)}` : ''
         }</p>
         <h2 class="hero-title">Avance de cosecha</h2>
         <p class="hero-copy">Informe operativo · jarras por grupo LIC y cosechador</p>
 
-        <div class="hero-metric" title="Total de jarras del día">
+        <button type="button" class="hero-metric is-tappable" data-stat="total" aria-label="Ver detalle del total">
           <div class="metric-main">
             <span class="metric-label">Total del día</span>
             <div class="metric-row">
@@ -566,7 +675,7 @@
               <span class="unit">jarras</span>
             </div>
           </div>
-          <div class="metric-spark" aria-hidden="true" title="Tendencia al alza">
+          <div class="metric-spark" aria-hidden="true">
             <svg class="spark-svg" viewBox="0 0 120 56" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
@@ -580,29 +689,95 @@
             </svg>
             <span class="spark-badge">↑ sube</span>
           </div>
-        </div>
+        </button>
 
-        <div class="report-stats" aria-label="Indicadores del día">
-          <div class="report-stat tone-people" title="Personas que cosecharon hoy">
+        <div class="report-stats" aria-label="Indicadores del día · toca para más info">
+          <button type="button" class="report-stat tone-people is-tappable" data-stat="people" aria-label="Detalle cosechadores">
             <span class="stat-label">Cosechadores</span>
-            <strong>${fmt(people.length || k.totalTrabajadores)}</strong>
-          </div>
-          <div class="report-stat tone-groups" title="Grupos LIC activos">
+            <strong>${fmt(nPeople)}</strong>
+            <span class="stat-hint">Toca</span>
+          </button>
+          <button type="button" class="report-stat tone-groups is-tappable" data-stat="groups" aria-label="Detalle grupos LIC">
             <span class="stat-label">Grupos LIC</span>
-            <strong>${fmt(k.totalGrupos || (k.porGrupo || []).length)}</strong>
-          </div>
-          <div class="report-stat tone-leader" title="Grupo con más jarras">
+            <strong>${fmt(nGrupos)}</strong>
+            <span class="stat-hint">Toca</span>
+          </button>
+          <button type="button" class="report-stat tone-leader is-tappable" data-stat="leader" aria-label="Detalle grupo líder">
             <span class="stat-label">Grupo líder</span>
             <strong>${escapeHtml(topG ? shortGrupo(topG.grupo) : '—')}</strong>
-          </div>
-          <div class="report-stat tone-top" title="Persona con más jarras">
+            <span class="stat-hint">Toca</span>
+          </button>
+          <button type="button" class="report-stat tone-top is-tappable" data-stat="top" data-ci="${escapeAttr(top && top.ci)}" aria-label="Detalle mejor cosechador">
             <span class="stat-label">Mejor cosechador</span>
             <strong>${escapeHtml(top ? QB.avatars.shortName(top) : '—')}</strong>
+            <span class="stat-hint">Toca</span>
+          </button>
+        </div>
+        <div class="stat-tip" id="statTip" hidden>
+          <p id="statTipText"></p>
+          <div class="stat-tip-actions">
+            <button type="button" class="stat-tip-close" id="statTipClose">Entendido</button>
+            <button type="button" class="stat-tip-more" id="statTipMore" hidden>Ver persona</button>
           </div>
         </div>
         <p class="hero-confidential">Solo autorizado para la empresa</p>
       </article>
     `;
+
+    bindStatTips(people, tipMap);
+  }
+
+  function bindStatTips(people, tipMap) {
+    const tip = $('statTip');
+    const tipText = $('statTipText');
+    const close = $('statTipClose');
+    const more = $('statTipMore');
+    if (!tip || !tipText) return;
+
+    const hide = () => {
+      tip.hidden = true;
+      if (more) more.hidden = true;
+      tip.dataset.openCi = '';
+      document.querySelectorAll('.report-stat.is-open, .hero-metric.is-open').forEach((el) => {
+        el.classList.remove('is-open');
+      });
+    };
+
+    if (close) close.onclick = (e) => {
+      e.stopPropagation();
+      hide();
+    };
+
+    if (more) {
+      more.onclick = (e) => {
+        e.stopPropagation();
+        const ci = tip.dataset.openCi;
+        const row = (people || []).find((r) => String(r.ci) === String(ci));
+        hide();
+        if (row) openWorkerModal(row);
+      };
+    }
+
+    $('heroSummary').querySelectorAll('[data-stat]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = btn.getAttribute('data-stat');
+        const open = btn.classList.contains('is-open');
+        hide();
+        if (open) return;
+
+        const msg = (tipMap && tipMap[key]) || '';
+        tipText.textContent = msg;
+        tip.hidden = false;
+        btn.classList.add('is-open');
+
+        if (key === 'top' && btn.dataset.ci) {
+          tip.dataset.openCi = String(btn.dataset.ci);
+          if (more) more.hidden = false;
+        }
+      });
+    });
   }
 
   function shortGrupo(g) {
@@ -653,12 +828,12 @@
         const peopleN = peopleByGrupo.get(String(g.grupo || '')) || 0;
         const jefe = QB.supervisors ? QB.supervisors.label(g.grupo) : '';
         const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(g.grupo) : '';
-        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="${escapeAttr(jefeFull || g.grupo)}">
-          <span class="grupo-map-rank">${i + 1}</span>
+        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="#${i + 1} · ${escapeAttr(shortGrupo(g.grupo))} · ${fmt(g.c)} jarras · ${peopleN} personas${jefeFull ? ` · Supervisor: ${escapeAttr(jefeFull)}` : ''} · toca para ver el equipo">
+          <span class="grupo-map-rank" title="Puesto #${i + 1} en jarras">${i + 1}</span>
           <span class="grupo-map-body">
             <span class="grupo-map-top">
-              <strong>${escapeHtml(shortGrupo(g.grupo))}</strong>
-              <em>${fmt(g.c)} jarras</em>
+              <strong title="${escapeAttr(g.grupo)}">${escapeHtml(shortGrupo(g.grupo))}</strong>
+              <em title="${fmt(g.c)} jarras en este grupo">${fmt(g.c)} jarras</em>
             </span>
             <span class="grupo-map-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
             <span class="grupo-map-sub">${
@@ -762,13 +937,13 @@
           people.length
             ? people
                 .map(
-                  (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}">
+                  (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(QB.avatars.shortName(r))} · CI ${escapeAttr(r.ci)} · ${fmt(r.c)} jarras · toca para detalle">
               ${QB.avatars.img(r, 40)}
               <span class="worker-main">
-                <strong>${escapeHtml(QB.avatars.shortName(r))}</strong>
-                <span>CI ${escapeHtml(r.ci)} · #${i + 1}</span>
+                <strong title="${escapeAttr(r.nombreCompleto || QB.avatars.shortName(r))}">${escapeHtml(QB.avatars.shortName(r))}</strong>
+                <span title="CI ${escapeAttr(r.ci)}">CI ${escapeHtml(r.ci)} · #${i + 1}</span>
               </span>
-              <span class="worker-jarras">
+              <span class="worker-jarras" title="${fmt(r.c)} jarras">
                 <em>${fmt(r.c)}</em>
                 <small>jarras</small>
               </span>
@@ -974,13 +1149,13 @@
     }
     list.innerHTML = people
       .map(
-        (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}">
+        (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(QB.avatars.shortName(r))} · CI ${escapeAttr(r.ci)} · ${escapeAttr(shortGrupo(r.grupo))} · ${fmt(r.c)} jarras · toca para ver detalle">
           ${QB.avatars.img(r, 40)}
           <span class="worker-main">
-            <strong>${escapeHtml(QB.avatars.shortName(r))}</strong>
-            <span>CI ${escapeHtml(r.ci)} · ${escapeHtml(shortGrupo(r.grupo))} · #${i + 1}</span>
+            <strong title="${escapeAttr(r.nombreCompleto || QB.avatars.shortName(r))}">${escapeHtml(QB.avatars.shortName(r))}</strong>
+            <span title="CI ${escapeAttr(r.ci)} · ${escapeAttr(shortGrupo(r.grupo))}">CI ${escapeHtml(r.ci)} · ${escapeHtml(shortGrupo(r.grupo))} · #${i + 1}</span>
           </span>
-          <span class="worker-jarras">
+          <span class="worker-jarras" title="${fmt(r.c)} jarras cosechadas">
             <em>${fmt(r.c)}</em>
             <small>jarras</small>
           </span>

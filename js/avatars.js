@@ -58,7 +58,7 @@ QB.avatars = {
     const ini = this.initials(row);
     const col = this.colorOf(row.ci || row.nombreCompleto || 'x');
     const fs = Math.max(11, Math.round(size * 0.34));
-    return `<span class="avatar avatar-initials" style="width:${size}px;height:${size}px;background:${col.bg};color:${col.fg};font-size:${fs}px" title="${ini}">${ini}</span>`;
+    return `<span class="avatar avatar-initials" style="width:${size}px;height:${size}px;background:${col.bg};color:${col.fg};font-size:${fs}px" title="${String(row.nombreCompleto || this.shortName(row) || ini).replace(/"/g, '&quot;')} · CI ${String(row.ci || '—')}">${ini}</span>`;
   },
 
   /**
@@ -67,20 +67,33 @@ QB.avatars = {
    */
   chip(row, { rank = null } = {}) {
     const name = this.shortName(row);
+    const full = String(row.nombreCompleto || `${row.apellido || ''} ${row.nombre || ''}`.trim() || name);
+    const grupo = (row.grupo || '').replace(/^Grupo\s+/i, '');
+    const jarras = Number(row.c || 0).toLocaleString('es-PE');
+    const tip = [
+      rank != null ? `#${rank}` : '',
+      full,
+      row.ci ? `CI ${row.ci}` : '',
+      grupo || '',
+      `${jarras} jarras`,
+      'Toca para ver detalle'
+    ]
+      .filter(Boolean)
+      .join(' · ')
+      .replace(/"/g, '&quot;');
     const rankHtml =
       rank == null
         ? ''
-        : `<span class="person-rank ${rank <= 3 ? 'is-top' : ''}">#${rank}</span>`;
-    const grupo = (row.grupo || '').replace(/^Grupo\s+/i, '');
-    return `<button type="button" class="person-chip" data-ci="${row.ci}">
+        : `<span class="person-rank ${rank <= 3 ? 'is-top' : ''}" title="Puesto #${rank} del día">#${rank}</span>`;
+    return `<button type="button" class="person-chip" data-ci="${row.ci}" title="${tip}">
       <div class="person-chip-top">
         ${rankHtml}
         ${this.img(row, 48)}
       </div>
       <span class="person-meta">
-        <strong>${name.length > 18 ? name.slice(0, 17) + '…' : name}</strong>
-        <em>${Number(row.c || 0).toLocaleString('es-PE')} jarras</em>
-        ${grupo ? `<span class="person-grupo">${grupo.length > 16 ? grupo.slice(0, 15) + '…' : grupo}</span>` : ''}
+        <strong title="${full.replace(/"/g, '&quot;')}">${name.length > 18 ? name.slice(0, 17) + '…' : name}</strong>
+        <em title="${jarras} jarras cosechadas">${jarras} jarras</em>
+        ${grupo ? `<span class="person-grupo" title="Grupo ${grupo}">${grupo.length > 16 ? grupo.slice(0, 15) + '…' : grupo}</span>` : ''}
       </span>
     </button>`;
   }

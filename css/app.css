@@ -401,6 +401,35 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
 }
 .header-accent { display: none; }
 
+.sync-banner[hidden] { display: none !important; }
+.sync-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.15rem 0 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff8ef, #f3faf1);
+  border: 1px solid rgba(247, 148, 29, 0.35);
+  color: #3d4a42;
+}
+.sync-banner p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.sync-spin {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 0.15rem;
+  border-radius: 50%;
+  border: 2px solid #ffe0b8;
+  border-top-color: #f7941d;
+  animation: load-spin 0.7s linear infinite;
+}
+
 .page-pad,
 .toolbar,
 .filters,
@@ -971,6 +1000,89 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   box-shadow: 0 4px 12px rgba(20, 53, 37, 0.04);
   overflow: hidden;
   box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+button.report-stat {
+  appearance: none;
+  width: 100%;
+}
+.report-stat.is-tappable:active,
+.report-stat.is-open {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(20, 53, 37, 0.1);
+}
+.report-stat.is-open {
+  outline: 2px solid rgba(74, 184, 72, 0.45);
+  outline-offset: 1px;
+}
+.report-stat .stat-hint {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a9a90;
+  opacity: 0.85;
+}
+.stat-tip[hidden] { display: none !important; }
+.stat-tip {
+  margin: 0.65rem 0 0;
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  background: #16301f;
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(22, 48, 31, 0.28);
+  animation: pop 0.22s ease;
+}
+.stat-tip p {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  white-space: pre-line;
+  font-weight: 550;
+}
+.stat-tip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.stat-tip-close,
+.stat-tip-more {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.stat-tip-close {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.stat-tip-more {
+  background: #4ab848;
+  color: #fff;
+}
+button.hero-metric.is-tappable {
+  appearance: none;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+button.hero-metric.is-open {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 2px;
 }
 .report-stat::before {
   display: none;
@@ -2760,6 +2872,60 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   color: #c2410c;
   background: var(--brand-orange-soft);
   border-color: #ffd6a3;
+}
+
+.load-overlay[hidden] { display: none !important; }
+.load-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(15, 28, 20, 0.48);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.load-card {
+  width: min(92vw, 320px);
+  text-align: center;
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.5rem 1.25rem 1.35rem;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.22);
+  animation: pop 0.28s ease;
+}
+.load-spinner {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  border: 3.5px solid #e8f5e4;
+  border-top-color: var(--brand-green, #4ab848);
+  border-right-color: var(--brand-orange, #f7941d);
+  animation: load-spin 0.7s linear infinite;
+}
+@keyframes load-spin {
+  to { transform: rotate(360deg); }
+}
+.load-card h2 {
+  margin: 0 0 0.35rem;
+  font-family: Outfit, "IBM Plex Sans", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #16301f;
+  letter-spacing: -0.02em;
+}
+.load-card p {
+  margin: 0;
+  color: #4a5c52;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+.load-hint {
+  margin-top: 0.65rem !important;
+  font-size: 0.8rem !important;
+  color: #8a9a90 !important;
 }
 
 .toast-host {

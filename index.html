@@ -19,20 +19,76 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m144" />
+  <link rel="stylesheet" href="css/app.css?v=m151" />
   <title>Q Berries · Reportes</title>
-  <script>
-    if (location.protocol === 'file:') {
-      document.documentElement.classList.add('is-file-protocol');
-    } else {
-      var l = document.createElement('link');
-      l.rel = 'manifest';
-      l.href = 'manifest.webmanifest';
-      document.head.appendChild(l);
+  <style>
+    /* Sin cache: oculta app vacía y muestra modal */
+    html:not(.has-cache) body:not(.is-ready) .app-shell,
+    html:not(.has-cache) body:not(.is-ready) #btnDataWarn,
+    html:not(.has-cache) body:not(.is-ready) #installBanner,
+    html:not(.has-cache) body:not(.is-ready) #toastHost,
+    html:not(.has-cache) body:not(.is-ready) #syncBanner { display: none !important; }
+    html.has-cache #loadOverlay,
+    #loadOverlay[hidden] { display: none !important; }
+    #loadOverlay {
+      position: fixed; inset: 0; z-index: 9999;
+      display: grid; place-items: center;
+      padding: 1.25rem;
+      background: linear-gradient(160deg, #f3faf1 0%, #fff8f0 55%, #ffffff 100%);
     }
+    #loadOverlay .load-card {
+      width: min(92vw, 320px); text-align: center;
+      background: #fff; border-radius: 20px;
+      padding: 1.6rem 1.3rem 1.4rem;
+      box-shadow: 0 18px 48px rgba(22, 48, 31, 0.14);
+      border: 1px solid rgba(74, 184, 72, 0.18);
+    }
+    #loadOverlay .load-spinner {
+      width: 48px; height: 48px; margin: 0 auto 1rem;
+      border-radius: 50%;
+      border: 3.5px solid #e8f5e4;
+      border-top-color: #4ab848;
+      border-right-color: #f7941d;
+      animation: qb-spin 0.65s linear infinite;
+    }
+    @keyframes qb-spin { to { transform: rotate(360deg); } }
+    #loadOverlay h2 {
+      margin: 0 0 0.4rem; font-family: Outfit, system-ui, sans-serif;
+      font-size: 1.2rem; font-weight: 700; color: #16301f;
+    }
+    #loadOverlay p { margin: 0; color: #4a5c52; font-size: 0.95rem; line-height: 1.4; }
+    #loadOverlay .load-hint { margin-top: 0.7rem !important; font-size: 0.8rem !important; color: #8a9a90 !important; }
+  </style>
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('qb_last_report_v1');
+        if (!raw) return;
+        var j = JSON.parse(raw);
+        if (j && j.data && j.data.length) document.documentElement.classList.add('has-cache');
+      } catch (e) {}
+      if (location.protocol === 'file:') {
+        document.documentElement.classList.add('is-file-protocol');
+      } else {
+        var l = document.createElement('link');
+        l.rel = 'manifest';
+        l.href = 'manifest.webmanifest';
+        document.head.appendChild(l);
+      }
+    })();
   </script>
 </head>
 <body>
+  <!-- Cubre todo al abrir: no se ve la página vacía -->
+  <div class="load-overlay" id="loadOverlay" aria-live="assertive" aria-busy="true">
+    <div class="load-card" role="dialog" aria-modal="true" aria-labelledby="loadTitle">
+      <div class="load-spinner" aria-hidden="true"></div>
+      <h2 id="loadTitle">Estamos trayendo la data</h2>
+      <p id="loadCopy">Espera un momento, por favor…</p>
+      <p class="load-hint">Un momento · reportes Licapa</p>
+    </div>
+  </div>
+
   <div id="fileProtocolGate" class="file-protocol-gate" hidden>
     <article class="file-protocol-card">
       <p class="file-protocol-kicker"><img src="./assets/icon-192.png" alt="Q Berries" class="file-protocol-logo" /> Reportes</p>
@@ -88,6 +144,11 @@
     </div>
     <div class="header-accent" aria-hidden="true"></div>
   </header>
+
+  <div class="sync-banner" id="syncBanner" hidden role="status" aria-live="polite">
+    <span class="sync-spin" aria-hidden="true"></span>
+    <p id="syncBannerText">Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.</p>
+  </div>
 
   <section class="hero-summary" id="heroSummary" aria-live="polite"></section>
 
@@ -256,7 +317,7 @@
             autocomplete="off"
             placeholder="Buscar CI o nombre…"
             aria-label="Buscar trabajador por DNI o nombre"
-            title="Buscar por DNI o nombre"
+            title="Buscar CI o nombre"
           />
         </div>
         <div class="workers-list" id="workersList" role="list"></div>
@@ -376,16 +437,16 @@
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m144"></script>
-  <script src="js/workers.js?v=m144"></script>
-  <script src="js/api.js?v=m144"></script>
-  <script src="js/icons.js?v=m144"></script>
-  <script src="js/avatars.js?v=m144"></script>
-  <script src="js/supervisors.js?v=m144"></script>
-  <script src="js/charts.js?v=m144"></script>
-  <script src="js/select.js?v=m144"></script>
-  <script src="js/export.js?v=m144"></script>
-  <script src="js/app.js?v=m144"></script>
+  <script src="js/config.js?v=m151"></script>
+  <script src="js/workers.js?v=m151"></script>
+  <script src="js/api.js?v=m151"></script>
+  <script src="js/icons.js?v=m151"></script>
+  <script src="js/avatars.js?v=m151"></script>
+  <script src="js/supervisors.js?v=m151"></script>
+  <script src="js/charts.js?v=m151"></script>
+  <script src="js/select.js?v=m151"></script>
+  <script src="js/export.js?v=m151"></script>
+  <script src="js/app.js?v=m151"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

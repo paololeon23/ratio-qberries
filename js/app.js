@@ -86,29 +86,44 @@
     updateConnBadge();
     await QB.workers.load();
 
+    /* Pintar cache de inmediato para nunca quedar vacío */
+    const cached = QB.api.getCachedPack && QB.api.getCachedPack();
+    if (cached && (cached.data || []).length) {
+      applyPack(cached);
+      updateConnBadge();
+    }
+
     try {
-      const pack = await QB.api.cargarTodo();
-      applyPack(pack);
+      const r = await QB.api.refresh();
+      applyPack(r.pack);
       QB.api.startDataWatch();
-      window.addEventListener('qb:data-updated', async () => {
-        try {
-          const p = await QB.api.cargarTodo();
-          applyPack(p);
-          flashHero();
-          QB.export.toast('Datos actualizados · ' + ((p.data && p.data.length) || 0) + ' filas', 'ok');
-        } catch (_) {}
+      window.addEventListener('qb:data-updated', (e) => {
+        const detail = (e && e.detail) || {};
+        const p = detail.pack || QB.api.getCachedPack();
+        if (!p) return;
+        applyPack(p);
+        flashHero();
+        QB.export.toast('Datos nuevos · ' + ((p.data && p.data.length) || 0) + ' personas', 'ok');
       });
       window.addEventListener('qb:data-tick', (e) => {
         const detail = (e && e.detail) || {};
         if (detail.actualizado) state.syncedAt = detail.actualizado;
         updateLiveBadge();
       });
-      const n = (pack.data && pack.data.length) || 0;
-      if (n) QB.export.toast('Listo · ' + n + ' personas', 'ok');
-      else QB.export.toast('Sheet sin filas · pega data en Google Sheets', 'warn');
+      const n = (r.pack.data && r.pack.data.length) || 0;
+      if (r.fromCache && r.error) {
+        QB.export.toast('Sin red · mostrando último guardado · ' + n + ' personas', 'warn');
+      } else if (n) {
+        QB.export.toast('Listo · ' + n + ' personas', 'ok');
+      } else {
+        QB.export.toast('Sheet sin filas · pega data en Google Sheets', 'warn');
+      }
     } catch (err) {
-      console.error('[QB] boot', err);
-      QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
+      if (cached && (cached.data || []).length) {
+        QB.export.toast('Sin red · usando cache local', 'warn');
+      } else {
+        QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
+      }
     }
   }
 
@@ -447,14 +462,26 @@
     const text = btn && btn.querySelector('.status-text');
     if (btn) btn.classList.add('is-busy');
     if (text) text.textContent = '…';
-    QB.export.toast('Leyendo…', 'warn');
     try {
-      const pack = await QB.api.cargarTodo();
-      applyPack(pack);
+      const r = await QB.api.refresh();
+      applyPack(r.pack);
       flashHero();
-      QB.export.toast('Listo · ' + ((pack.data && pack.data.length) || 0) + ' filas', 'ok');
+      const n = (r.pack.data && r.pack.data.length) || 0;
+      if (r.fromCache && r.error) {
+        QB.export.toast('Sin cambios de red · cache · ' + n + ' personas', 'warn');
+      } else if (r.changed) {
+        QB.export.toast('Datos nuevos · ' + n + ' personas', 'ok');
+      } else {
+        QB.export.toast('Sin cambios · ' + n + ' personas', 'ok');
+      }
     } catch (err) {
-      QB.export.toast('Error API: ' + (err && err.message ? err.message : 'error'), 'warn');
+      const cached = QB.api.getCachedPack && QB.api.getCachedPack();
+      if (cached) {
+        applyPack(cached);
+        QB.export.toast('Error de red · mostrando cache', 'warn');
+      } else {
+        QB.export.toast('Error API: ' + (err && err.message ? err.message : 'error'), 'warn');
+      }
     } finally {
       if (btn) btn.classList.remove('is-busy');
       if (text) text.textContent = 'Actualizar';
@@ -463,17 +490,13 @@
   }
 
   async function refreshMeta(forceLatestDay) {
-    const pack = await QB.api.cargarTodo();
-    applyPack(pack);
+    const r = await QB.api.refresh();
+    applyPack(r.pack);
   }
 
   async function reload(bust) {
-    if (bust) QB.api.clearLocalDataCache();
-    const pack = await QB.api.reporte({
-      fechas: state.fecha ? [state.fecha] : [],
-      force: !!bust
-    });
-    applyPack(pack);
+    const r = await QB.api.refresh();
+    applyPack(r.pack);
   }
 
   /** Una fila por persona (suma jarras del periodo). No valida día por día. */
@@ -1249,9 +1272,8 @@
   }
 
   boot().catch(function (err) {
-    console.error(err);
     if (QB.export && QB.export.toast) {
-      QB.export.toast('No se pudo cargar: ' + err.message, 'warn');
+      QB.export.toast('No se pudo cargar: ' + (err && err.message ? err.message : 'error'), 'warn');
     }
   });
 })();

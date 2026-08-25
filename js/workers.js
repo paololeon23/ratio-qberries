@@ -28,7 +28,6 @@ QB.workers = {
       this.ready = true;
       return map;
     } catch (err) {
-      console.warn('[workers]', err);
       this.ready = false;
       return this.map;
     }

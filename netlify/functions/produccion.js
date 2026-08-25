@@ -1,10 +1,6 @@
 /**
- * Netlify Function — proxy seguro a Apps Script (producción Licapa)
- * Env:
- *   APPS_SCRIPT_URL  = https://script.google.com/macros/s/.../exec
- *   API_TOKEN        = mismo token que Script Properties
- *
- * Fallback: URL de deploy actual Q Berries Licapa
+ * Netlify Function — proxy a Apps Script (sin token)
+ * Env opcional: APPS_SCRIPT_URL
  */
 const fetch = globalThis.fetch;
 
@@ -24,22 +20,11 @@ exports.handler = async (event) => {
   }
 
   const url = process.env.APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL;
-  const token = process.env.API_TOKEN || '';
-  if (!url) {
-    return {
-      statusCode: 503,
-      headers,
-      body: JSON.stringify({
-        ok: false,
-        error: 'MISSING_APPS_SCRIPT_URL',
-        hint: 'Configura APPS_SCRIPT_URL y API_TOKEN en Netlify Environment'
-      })
-    };
-  }
 
   try {
     const params = new URLSearchParams(event.queryStringParameters || {});
-    if (token) params.set('token', token);
+    // default action=todo
+    if (!params.has('action')) params.set('action', 'todo');
 
     let target = url + (url.includes('?') ? '&' : '?') + params.toString();
     const init = { method: 'GET', redirect: 'follow' };
@@ -53,22 +38,17 @@ exports.handler = async (event) => {
       } catch (_) {
         body = {};
       }
-      if (token) body.token = token;
-      // merge query action into body
       params.forEach((v, k) => {
-        if (k !== 'token' && body[k] == null) body[k] = v;
+        if (body[k] == null) body[k] = v;
       });
+      if (!body.action) body.action = 'todo';
       init.body = JSON.stringify(body);
       target = url;
     }
 
     const res = await fetch(target, init);
     const text = await res.text();
-    return {
-      statusCode: res.status,
-      headers,
-      body: text
-    };
+    return { statusCode: res.status, headers, body: text };
   } catch (err) {
     return {
       statusCode: 502,

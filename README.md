@@ -10,16 +10,13 @@ Zona horaria: `America/Lima`. UI en español (Perú).
 [Chrome / PWA]
    index.html + js + css
         |
-        | GET /api/produccion?action=reporteProduccion&fechas=2026-08-11,2026-08-10
-        v
-[Netlify Function produccion.js]
-   inyecta API_TOKEN
-        |
+        | GET script.google.com/.../exec?action=todo  (directo, sin proxy)
         v
 [Google Apps Script Code.gs]
+   GET ?action=todo  (público)
         |
         v
-[Google Sheet — una hoja por fecha]
+[Google Sheet — ratio_jarras]
 ```
 
 ### Hojas Sheets
@@ -38,6 +35,7 @@ Base (tras deploy): `/api/produccion`
 
 | action | params | uso |
 |--------|--------|-----|
+| `todo` | — / `fecha` | **GET único**: hoy + KPIs + data |
 | `listarHojas` | — | fechas disponibles |
 | `reporteProduccion` | `fecha` / `fechas=a,b` / `comparar=1` / `ayer=1` / `todas=1` | KPIs + filas |
 | | `grupo`, `variedad`, `q`, `ci`, `limit`, `offset`, `soloKpis=1`, `top` | filtros |
@@ -61,11 +59,10 @@ Sin Netlify/Apps Script, la app lee:
 ## Deploy Netlify
 
 1. Sube el repo (publish `.`).
-2. Env vars:
-   - `APPS_SCRIPT_URL` = URL `/exec` del deployment
-   - `API_TOKEN` = secreto (también en Script Properties de Apps Script)
-3. Pega `apps-script/Code.gs` en el proyecto Apps Script del Sheet → **Nueva versión** del web app.
-4. En el Sheet: crea hojas `YYYY-MM-DD` y pega/importa la producción del día.
+2. Opcional: `APPS_SCRIPT_URL` = URL `/exec` (si no, usa el default del código).
+3. **Sin API_TOKEN** — la API es pública (`Anyone`).
+4. Pega `apps-script/Code.gs` en el Sheet → **Nueva versión** del web app.
+5. Data en el Google Sheet (columna **CI**, no DNI).
 
 ## Desarrollo local
 

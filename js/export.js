@@ -334,43 +334,7 @@ QB.export = {
     const filename =
       'LIC_' + safePart(licLabel, 20) + '_' + safePart(jefeLabel, 24) + '_' + fechaSlug + '.pdf';
 
-    const shareText = [
-      '*Q Berries · Reporte de equipo*',
-      'LIC: ' + licLabel,
-      'Supervisor: ' + jefeLabel,
-      'Fecha: ' + fechaLabel,
-      'Personas: ' + people.length + ' · Jarras: ' + fmtN(totalJarras),
-      '',
-      'Solo autorizado para la empresa'
-    ].join('\n');
-
-    const shareTitle = 'LIC ' + licLabel + ' · ' + jefeLabel;
-
-    try {
-      const blob = doc.output('blob');
-      const file = new File([blob], filename, { type: 'application/pdf' });
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          files: [file]
-        });
-        this.toast('Elige WhatsApp para enviar');
-        return;
-      }
-    } catch (err) {
-      if (err && err.name === 'AbortError') {
-        this.toast('Compartir cancelado', 'warn');
-        return;
-      }
-    }
-
-    // Fallback: descarga + abre WhatsApp con texto LIC + supervisor
     doc.save(filename);
-    const waUrl = 'https://wa.me/?text=' + encodeURIComponent(shareText + '\n\n📎 Adjunta el PDF: ' + filename);
-    try {
-      window.open(waUrl, '_blank', 'noopener');
-    } catch (_) {}
-    this.toast('PDF descargado · abre WhatsApp y adjunta el archivo');
+    this.toast('PDF descargado');
   }
 };

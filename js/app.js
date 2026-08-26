@@ -625,49 +625,18 @@
     const top = people[0];
     const topG = (k.porGrupo || [])[0];
     const syncAt = shortSyncTime(state.syncedAt || report.actualizado || QB.api.getLastSync() || '');
-
     const nPeople = people.length || k.totalTrabajadores || 0;
     const nGrupos = k.totalGrupos || (k.porGrupo || []).length || 0;
-    const tipPeople =
-      `Cosechadores: ${fmt(nPeople)} personas con jarras hoy.\n` +
-      `Promedio ~${fmt(k.promedioCajasPorTrabajador || 0)} jarras por persona.\n` +
-      `Ve el ranking completo en la pestaña Personas.`;
-    const tipGrupos =
-      `Grupos LIC: ${fmt(nGrupos)} activos en campo.\n` +
-      `Cada grupo tiene supervisor asignado.\n` +
-      `Abre la pestaña Grupos para ver el mapa.`;
-    const tipLeader = topG
-      ? `Grupo líder: ${shortGrupo(topG.grupo)}.\n` +
-        `${fmt(topG.c)} jarras (el de más producción hoy).\n` +
-        `Toca Grupos para ver su equipo.`
-      : 'Aún no hay grupo líder con jarras.';
-    const tipTop = top
-      ? `Mejor cosechador: ${QB.avatars.shortName(top)}.\n` +
-        `CI ${top.ci} · ${fmt(top.c)} jarras.\n` +
-        `Grupo ${shortGrupo(top.grupo)}.\n` +
-        `Toca para abrir su detalle.`
-      : 'Aún no hay mejor cosechador.';
-
-    const tipMap = {
-      total:
-        `Total del día: ${fmt(k.totalCajas)} jarras · ${fecha}` +
-        (syncAt ? ` · Act. ${syncAt}` : '') +
-        `\nSuma de todas las jarras registradas en Licapa.`,
-      people: tipPeople,
-      groups: tipGrupos,
-      leader: tipLeader,
-      top: tipTop
-    };
 
     $('heroSummary').innerHTML = `
-      <article class="hero-card report-hero">
-        <p class="report-kicker">Fecha de cosecha · ${escapeHtml(fecha)}${
+      <article class="hero-card report-hero" title="Avance de cosecha · ${escapeAttr(fecha)}${syncAt ? ` · actualizado ${escapeAttr(syncAt)}` : ''}">
+        <p class="report-kicker" title="Fecha de cosecha y última sincronización">Fecha de cosecha · ${escapeHtml(fecha)}${
           syncAt ? ` · Act. ${escapeHtml(syncAt)}` : ''
         }</p>
-        <h2 class="hero-title">Avance de cosecha</h2>
-        <p class="hero-copy">Informe operativo · jarras por grupo LIC y cosechador</p>
+        <h2 class="hero-title" title="Resumen operativo del día en Licapa">Avance de cosecha</h2>
+        <p class="hero-copy" title="Jarras agregadas por grupo LIC y por cosechador (CI)">Informe operativo · jarras por grupo LIC y cosechador</p>
 
-        <button type="button" class="hero-metric is-tappable" data-stat="total" aria-label="Ver detalle del total">
+        <div class="hero-metric" title="Total del día: ${fmt(k.totalCajas)} jarras cosechadas · ${escapeAttr(fecha)}">
           <div class="metric-main">
             <span class="metric-label">Total del día</span>
             <div class="metric-row">
@@ -675,7 +644,7 @@
               <span class="unit">jarras</span>
             </div>
           </div>
-          <div class="metric-spark" aria-hidden="true">
+          <div class="metric-spark" aria-hidden="true" title="Tendencia al alza">
             <svg class="spark-svg" viewBox="0 0 120 56" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
@@ -689,95 +658,29 @@
             </svg>
             <span class="spark-badge">↑ sube</span>
           </div>
-        </button>
+        </div>
 
-        <div class="report-stats" aria-label="Indicadores del día · toca para más info">
-          <button type="button" class="report-stat tone-people is-tappable" data-stat="people" aria-label="Detalle cosechadores">
+        <div class="report-stats" aria-label="Indicadores del día" title="Indicadores clave del día de cosecha">
+          <div class="report-stat tone-people" title="Cosechadores: ${fmt(nPeople)} personas que registraron jarras hoy · toca el ranking en Personas">
             <span class="stat-label">Cosechadores</span>
             <strong>${fmt(nPeople)}</strong>
-            <span class="stat-hint">Toca</span>
-          </button>
-          <button type="button" class="report-stat tone-groups is-tappable" data-stat="groups" aria-label="Detalle grupos LIC">
+          </div>
+          <div class="report-stat tone-groups" title="Grupos LIC: ${fmt(nGrupos)} grupos activos en campo · ver detalle en pestaña Grupos">
             <span class="stat-label">Grupos LIC</span>
             <strong>${fmt(nGrupos)}</strong>
-            <span class="stat-hint">Toca</span>
-          </button>
-          <button type="button" class="report-stat tone-leader is-tappable" data-stat="leader" aria-label="Detalle grupo líder">
+          </div>
+          <div class="report-stat tone-leader" title="Grupo líder: ${escapeAttr(topG ? shortGrupo(topG.grupo) : '—')}${topG ? ` · ${fmt(topG.c)} jarras (el de más producción hoy)` : ''}">
             <span class="stat-label">Grupo líder</span>
             <strong>${escapeHtml(topG ? shortGrupo(topG.grupo) : '—')}</strong>
-            <span class="stat-hint">Toca</span>
-          </button>
-          <button type="button" class="report-stat tone-top is-tappable" data-stat="top" data-ci="${escapeAttr(top && top.ci)}" aria-label="Detalle mejor cosechador">
+          </div>
+          <div class="report-stat tone-top" title="Mejor cosechador: ${escapeAttr(top ? QB.avatars.shortName(top) : '—')}${top ? ` · CI ${escapeAttr(top.ci)} · ${fmt(top.c)} jarras` : ''}">
             <span class="stat-label">Mejor cosechador</span>
             <strong>${escapeHtml(top ? QB.avatars.shortName(top) : '—')}</strong>
-            <span class="stat-hint">Toca</span>
-          </button>
-        </div>
-        <div class="stat-tip" id="statTip" hidden>
-          <p id="statTipText"></p>
-          <div class="stat-tip-actions">
-            <button type="button" class="stat-tip-close" id="statTipClose">Entendido</button>
-            <button type="button" class="stat-tip-more" id="statTipMore" hidden>Ver persona</button>
           </div>
         </div>
         <p class="hero-confidential">Solo autorizado para la empresa</p>
       </article>
     `;
-
-    bindStatTips(people, tipMap);
-  }
-
-  function bindStatTips(people, tipMap) {
-    const tip = $('statTip');
-    const tipText = $('statTipText');
-    const close = $('statTipClose');
-    const more = $('statTipMore');
-    if (!tip || !tipText) return;
-
-    const hide = () => {
-      tip.hidden = true;
-      if (more) more.hidden = true;
-      tip.dataset.openCi = '';
-      document.querySelectorAll('.report-stat.is-open, .hero-metric.is-open').forEach((el) => {
-        el.classList.remove('is-open');
-      });
-    };
-
-    if (close) close.onclick = (e) => {
-      e.stopPropagation();
-      hide();
-    };
-
-    if (more) {
-      more.onclick = (e) => {
-        e.stopPropagation();
-        const ci = tip.dataset.openCi;
-        const row = (people || []).find((r) => String(r.ci) === String(ci));
-        hide();
-        if (row) openWorkerModal(row);
-      };
-    }
-
-    $('heroSummary').querySelectorAll('[data-stat]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const key = btn.getAttribute('data-stat');
-        const open = btn.classList.contains('is-open');
-        hide();
-        if (open) return;
-
-        const msg = (tipMap && tipMap[key]) || '';
-        tipText.textContent = msg;
-        tip.hidden = false;
-        btn.classList.add('is-open');
-
-        if (key === 'top' && btn.dataset.ci) {
-          tip.dataset.openCi = String(btn.dataset.ci);
-          if (more) more.hidden = false;
-        }
-      });
-    });
   }
 
   function shortGrupo(g) {
@@ -957,7 +860,7 @@
       </div>
       <div class="sheet-foot sheet-foot-row">
         <button type="button" class="btn btn-ghost" id="btnBackGrupos">Volver a grupos</button>
-        <button type="button" class="btn btn-primary" id="btnPdfGrupo" title="Compartir PDF por WhatsApp">WhatsApp PDF</button>
+        <button type="button" class="btn btn-primary" id="btnPdfGrupo" title="Descargar PDF del equipo">Descargar PDF</button>
       </div>
     `;
 

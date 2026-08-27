@@ -1,19 +1,19 @@
-﻿/* Service worker — app usable sin internet (shell; datos siempre frescos en red) */
-const CACHE = 'qb-rendimientos-m153';
+/* Service worker — app usable sin internet (shell; datos siempre frescos en red) */
+const CACHE = 'qb-rendimientos-m162';
 const PRECACHE = [
   './',
   './index.html',
-  './css/app.css?v=m153',
-  './js/config.js?v=m153',
-  './js/workers.js?v=m153',
-  './js/api.js?v=m153',
-  './js/icons.js?v=m153',
-  './js/avatars.js?v=m153',
-  './js/supervisors.js?v=m153',
-  './js/charts.js?v=m153',
-  './js/select.js?v=m153',
-  './js/export.js?v=m153',
-  './js/app.js?v=m153',
+  './css/app.css?v=m162',
+  './js/config.js?v=m162',
+  './js/workers.js?v=m162',
+  './js/api.js?v=m162',
+  './js/icons.js?v=m162',
+  './js/avatars.js?v=m162',
+  './js/supervisors.js?v=m162',
+  './js/charts.js?v=m162',
+  './js/select.js?v=m162',
+  './js/export.js?v=m162',
+  './js/app.js?v=m162',
   './vendor/echarts.min.js',
   './vendor/jspdf.umd.min.js',
   './manifest.webmanifest',

@@ -136,6 +136,8 @@ function todo_(p) {
     var variedad = iVar >= 0 ? String(row[iVar] || '').trim() : '';
     var nombre = iNom >= 0 ? String(row[iNom] || '').trim() : '';
     var apellido = iApe >= 0 ? String(row[iApe] || '').trim() : '';
+    if (isJunkName_(nombre)) nombre = '';
+    if (isJunkName_(apellido)) apellido = '';
     var key = rowFecha + '|' + ci;
 
     if (!byWorkerAll[key]) {
@@ -157,8 +159,8 @@ function todo_(p) {
     var w = byWorkerAll[key];
     w.c += c;
     w.filas += 1;
-    if ((!w.nombre || w.nombre === 'S/N') && nombre && nombre !== 'S/N') w.nombre = nombre;
-    if ((!w.apellido || w.apellido === 'S/N') && apellido && apellido !== 'S/N') w.apellido = apellido;
+    if (!w.nombre && nombre) w.nombre = nombre;
+    if (!w.apellido && apellido) w.apellido = apellido;
     if (!w.grupo && grupo) w.grupo = grupo;
     if (!w.variedad && variedad) w.variedad = variedad;
 
@@ -363,10 +365,35 @@ function col_(headers, name) {
 
 function cellCi_(v) {
   if (v == null || v === '') return '';
-  if (typeof v === 'number') return String(Math.round(v));
-  var s = String(v).replace(/\.0$/, '').trim();
-  var m = s.match(/(\d{6,})/);
-  return m ? m[1] : s.replace(/\D/g, '') || s;
+  var digits = '';
+  if (typeof v === 'number') {
+    digits = String(Math.round(v));
+  } else {
+    var s = String(v).replace(/\.0$/, '').trim();
+    // "S/N (70.845.004-E)" → digitos del paréntesis
+    var paren = s.match(/\(([^)]+)\)/);
+    if (paren) s = paren[1];
+    digits = String(s).replace(/\D/g, '');
+    if (!digits) {
+      var m = String(v).match(/(\d{6,})/);
+      digits = m ? m[1] : '';
+    }
+  }
+  if (!digits) return '';
+  // DNI PE = 8 dígitos; Sheets como número pierde ceros a la izquierda
+  while (digits.length < 8) digits = '0' + digits;
+  return digits.substring(0, 9);
+}
+
+/** S/N, CI formateado o vacío → no enviar como nombre */
+function isJunkName_(s) {
+  if (s == null) return true;
+  s = String(s).trim();
+  if (!s) return true;
+  if (/^S\/N\b/i.test(s)) return true;
+  if (s.charAt(0) === '(') return true;
+  if (/^\d{1,2}([.\s]\d{3}){2}([-\s]?\w)?$/i.test(s)) return true;
+  return false;
 }
 
 function cellNum_(v) {

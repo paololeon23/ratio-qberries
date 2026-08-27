@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es-PE">
 <head>
   <meta charset="UTF-8" />
@@ -19,16 +19,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m153" />
+  <link rel="stylesheet" href="css/app.css?v=m162" />
   <title>Q Berries · Reportes</title>
   <style>
-    /* Sin cache: oculta app vacía y muestra modal */
-    html:not(.has-cache) body:not(.is-ready) .app-shell,
-    html:not(.has-cache) body:not(.is-ready) #btnDataWarn,
-    html:not(.has-cache) body:not(.is-ready) #installBanner,
-    html:not(.has-cache) body:not(.is-ready) #toastHost,
-    html:not(.has-cache) body:not(.is-ready) #syncBanner { display: none !important; }
-    html.has-cache #loadOverlay,
+    /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
+    body:not(.is-ready) .app-shell,
+    body:not(.is-ready) #btnDataWarn,
+    body:not(.is-ready) #installBanner,
+    body:not(.is-ready) #toastHost,
+    body:not(.is-ready) #syncBanner { display: none !important; }
+    body:not(.is-ready) #loadOverlay { display: grid !important; }
+    body.is-ready #loadOverlay,
     #loadOverlay[hidden] { display: none !important; }
     #loadOverlay {
       position: fixed; inset: 0; z-index: 9999;
@@ -61,12 +62,8 @@
   </style>
   <script>
     (function () {
-      try {
-        var raw = localStorage.getItem('qb_last_report_v1');
-        if (!raw) return;
-        var j = JSON.parse(raw);
-        if (j && j.data && j.data.length) document.documentElement.classList.add('has-cache');
-      } catch (e) {}
+      /* Siempre empieza en carga — no anticipar app vacía */
+      document.documentElement.classList.remove('has-cache');
       if (location.protocol === 'file:') {
         document.documentElement.classList.add('is-file-protocol');
       } else {
@@ -83,9 +80,9 @@
   <div class="load-overlay" id="loadOverlay" aria-live="assertive" aria-busy="true">
     <div class="load-card" role="dialog" aria-modal="true" aria-labelledby="loadTitle">
       <div class="load-spinner" aria-hidden="true"></div>
-      <h2 id="loadTitle">Estamos trayendo la data</h2>
+      <h2 id="loadTitle">Cargando</h2>
       <p id="loadCopy">Espera un momento, por favor…</p>
-      <p class="load-hint">Un momento · reportes Licapa</p>
+      <p class="load-hint">Preparando reportes Licapa</p>
     </div>
   </div>
 
@@ -280,6 +277,14 @@
               <p class="muted" id="gruposMeta">Avance del día · con jefe / supervisor</p>
             </div>
           </div>
+          <div class="excel-actions" aria-label="Exportar Excel">
+            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Descargar Excel · personas con menos de 40 jarras">
+              Excel &lt; 40
+            </button>
+            <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Descargar Excel · personas con más de 40 jarras">
+              Excel &gt; 40
+            </button>
+          </div>
         </div>
         <div class="workers-search">
           <span class="workers-search-ico" id="gruposSearchIco" aria-hidden="true"></span>
@@ -437,16 +442,16 @@
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m153"></script>
-  <script src="js/workers.js?v=m153"></script>
-  <script src="js/api.js?v=m153"></script>
-  <script src="js/icons.js?v=m153"></script>
-  <script src="js/avatars.js?v=m153"></script>
-  <script src="js/supervisors.js?v=m153"></script>
-  <script src="js/charts.js?v=m153"></script>
-  <script src="js/select.js?v=m153"></script>
-  <script src="js/export.js?v=m153"></script>
-  <script src="js/app.js?v=m153"></script>
+  <script src="js/config.js?v=m162"></script>
+  <script src="js/workers.js?v=m162"></script>
+  <script src="js/api.js?v=m162"></script>
+  <script src="js/icons.js?v=m162"></script>
+  <script src="js/avatars.js?v=m162"></script>
+  <script src="js/supervisors.js?v=m162"></script>
+  <script src="js/charts.js?v=m162"></script>
+  <script src="js/select.js?v=m162"></script>
+  <script src="js/export.js?v=m162"></script>
+  <script src="js/app.js?v=m162"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

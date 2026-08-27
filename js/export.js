@@ -274,9 +274,9 @@ QB.export = {
         doc.rect(margin, y, w - margin * 2, rowH, 'F');
       }
       const name =
-        r.nombreCompleto ||
-        [r.nombre, r.apellido].filter(Boolean).join(' ').trim() ||
-        'Sin nombre';
+        (window.QB && QB.avatars && QB.avatars.realName(r)) ||
+        (window.QB && QB.avatars && QB.avatars.shortName(r)) ||
+        (r.ci ? 'CI ' + r.ci : 'Sin nombre');
       const nameSafe = doc.splitTextToSize(String(name), col.jarras - col.nombre - 18)[0];
 
       doc.setTextColor(60, 70, 80);
@@ -336,5 +336,76 @@ QB.export = {
 
     doc.save(filename);
     this.toast('PDF descargado');
+  },
+
+  /**
+   * Excel (CSV UTF-8) · personas por umbral de jarras
+   * meta: { mode: 'lt40'|'gt40', people[], fecha, fechaLabel }
+   */
+  excelPeopleByJarras(meta) {
+    meta = meta || {};
+    const mode = meta.mode === 'gt40' ? 'gt40' : 'lt40';
+    const people = [...(meta.people || [])].sort((a, b) => (b.c || 0) - (a.c || 0));
+    if (!people.length) {
+      this.toast('Sin personas para este Excel', 'warn');
+      return;
+    }
+
+    const esc = (v) => {
+      const s = String(v == null ? '' : v);
+      if (/[;"\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const shortGrupo = (g) => String(g || '—').replace(/^Grupo\s+/i, '') || '—';
+    const jefeDe = (g) => {
+      if (!QB.supervisors) return '';
+      return QB.supervisors.fullLabel(g) || QB.supervisors.label(g) || '';
+    };
+    const nombreDe = (r) =>
+      (QB.avatars && QB.avatars.realName(r)) ||
+      (QB.avatars && QB.avatars.shortName(r)) ||
+      r.ci ||
+      '—';
+
+    const rows = [
+      ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Fecha'].map(esc).join(';')
+    ];
+    people.forEach((r) => {
+      rows.push(
+        [
+          r.ci || '',
+          nombreDe(r),
+          shortGrupo(r.grupo),
+          jefeDe(r.grupo),
+          Number(r.c || 0),
+          meta.fechaLabel || meta.fecha || ''
+        ]
+          .map(esc)
+          .join(';')
+      );
+    });
+
+    const bom = '\uFEFF';
+    const csv = bom + rows.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_');
+    const tag = mode === 'gt40' ? 'mas_de_40' : 'menos_de_40';
+    const filename = 'QBerries_' + tag + '_jarras_' + fechaSlug + '.csv';
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+    this.toast(
+      'Excel descargado · ' +
+        people.length +
+        ' personas · ' +
+        (mode === 'gt40' ? 'más de 40' : 'menos de 40')
+    );
   }
 };

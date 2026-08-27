@@ -211,13 +211,12 @@ QB.charts = {
   },
 
   shortName(row) {
-    let ape = (row.apellido || '').trim();
-    if (!ape || ape.startsWith('(')) {
-      const full = (row.nombreCompleto || '').trim();
-      if (full) ape = full.split(/\s+/).slice(0, 2).join(' ');
+    if (window.QB && QB.avatars && QB.avatars.shortName) {
+      const n = QB.avatars.shortName(row);
+      if (n) return n.length > 16 ? n.slice(0, 14) + '…' : n;
     }
-    if (!ape || ape === 'S/N') ape = row.ci || '—';
-    return ape.length > 16 ? ape.slice(0, 14) + '…' : ape;
+    const ci = String((row && row.ci) || '');
+    return ci || '—';
   },
 
   shortGrupo(g) {
@@ -312,7 +311,9 @@ QB.charts = {
           const p = params[0];
           const row = top[p.dataIndex];
           if (!row) return '';
-          const full = row.nombreCompleto || `${row.nombre || ''} ${row.apellido || ''}`.trim() || row.ci;
+          const full =
+            (window.QB && QB.avatars && (QB.avatars.realName(row) || QB.avatars.shortName(row))) ||
+            row.ci;
           return `<b>#${p.dataIndex + 1} · ${full}</b><br/>CI ${row.ci}<br/>Jarras: <b>${Number(row.c).toLocaleString('es-PE')}</b>`;
         }
       }),
@@ -411,7 +412,9 @@ QB.charts = {
         formatter: (p) => {
           const row = top[p.dataIndex];
           if (!row) return '';
-          const full = row.nombreCompleto || self.shortName(row);
+          const full =
+            (window.QB && QB.avatars && (QB.avatars.realName(row) || QB.avatars.shortName(row))) ||
+            self.shortName(row);
           const pct = ((row.c / max) * 100).toFixed(0);
           return `<b>#${p.dataIndex + 1} · ${full}</b><br/>Jarras: <b>${Number(row.c).toLocaleString('es-PE')}</b><br/>Vs #1: <b>${pct}%</b>`;
         }
@@ -972,7 +975,9 @@ QB.charts = {
           const row = top[p[0].dataIndex];
           if (!row) return '';
           const rank = top.length - p[0].dataIndex;
-          const full = row.nombreCompleto || self.shortName(row);
+          const full =
+            (window.QB && QB.avatars && (QB.avatars.realName(row) || QB.avatars.shortName(row))) ||
+            self.shortName(row);
           return `<b>${medals[rank - 1] || '#' + rank} · ${full}</b><br/>CI ${row.ci}<br/>Jarras: <b>${Number(row.c).toLocaleString('es-PE')}</b>`;
         }
       }),
@@ -1442,12 +1447,8 @@ QB.charts = {
     const top = sorted.slice(0, 8);
     const bottom = sorted.slice(-8).reverse();
     const labelOf = (r) => {
-      let ape = (r.apellido || '').trim();
-      if (!ape || ape.startsWith('(')) {
-        const full = (r.nombreCompleto || '').trim();
-        if (full) ape = full.split(/\s+/).slice(0, 2).join(' ');
-      }
-      return ape || r.ci || '—';
+      const n = window.QB && QB.avatars ? QB.avatars.shortName(r) : '';
+      return n || r.ci || '—';
     };
     chart.setOption({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -2400,7 +2401,7 @@ QB.charts = {
     );
   },
 
-  /** Tarjetas alineadas · mismo orden en todas */
+  /** Tarjetas alineadas · siempre 3 en Atención (Personal · Ritmo · Mejor) */
   renderSupervisorAlerts(stats, merged) {
     const host = document.getElementById('attnList');
     if (!host) return;
@@ -2416,11 +2417,20 @@ QB.charts = {
       return;
     }
 
-    const avgPeople = withN.reduce((s, g) => s + g.n, 0) / withN.length;
-    const avgPer = withN.reduce((s, g) => s + g.avg, 0) / withN.length;
-    const few = [...withN].sort((a, b) => a.n - b.n)[0];
-    const lowRhythm = [...withN].sort((a, b) => a.avg - b.avg)[0];
-    const topRhythm = [...withN].sort((a, b) => b.avg - a.avg)[0];
+    const byPeopleAsc = [...withN].sort((a, b) => a.n - b.n || a.avg - b.avg);
+    const byAvgAsc = [...withN].sort((a, b) => a.avg - b.avg || a.n - b.n);
+    const byAvgDesc = [...withN].sort((a, b) => b.avg - a.avg || b.c - a.c);
+
+    const few = byPeopleAsc[0];
+    const topRhythm = byAvgDesc[0];
+    /* Ritmo: peor promedio distinto de Personal y de Mejor */
+    let lowRhythm = byAvgAsc.find(
+      (g) => g.grupo !== few.grupo && g.grupo !== topRhythm.grupo
+    );
+    if (!lowRhythm) {
+      lowRhythm = byAvgAsc.find((g) => g.grupo !== topRhythm.grupo) || byAvgAsc[0];
+    }
+
     const jefe = (g) => this.jefeDe(g) || 'Sin jefe';
     const card = (kind, tag, row, action) => ({
       kind,
@@ -2433,21 +2443,13 @@ QB.charts = {
       action
     });
 
-    const cards = [];
-    if (few && few.n < avgPeople * 0.75) {
-      cards.push(card('warn', 'Personal', few, 'Sumar cosechadores'));
-    }
-    if (lowRhythm && lowRhythm.avg < avgPer * 0.8 && lowRhythm.n >= avgPeople * 0.7) {
-      if (!cards.length || cards[0].lic !== this.shortGrupo(lowRhythm.grupo)) {
-        cards.push(card('warn', 'Ritmo', lowRhythm, 'Revisar lote'));
-      }
-    }
-    if (topRhythm) {
-      cards.push(card('ok', 'Mejor', topRhythm, 'Referencia del día'));
-    }
+    const cards = [
+      card('warn', 'Personal', few, 'Sumar cosechadores'),
+      card('warn', 'Ritmo', lowRhythm, 'Revisar lote'),
+      card('ok', 'Mejor', topRhythm, 'Referencia del día')
+    ];
 
     host.innerHTML = cards
-      .slice(0, 3)
       .map((c) => {
         return (
           '<article class="attn-card is-' +

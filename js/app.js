@@ -10,6 +10,7 @@
     grupoQ: '',
     grupoModal: '',
     grupoWorkerQ: '',
+    grupoJarFilter: 'all',
     tab: 'resumen',
     fecha: '',
     syncedAt: '',
@@ -84,36 +85,50 @@
       return;
     }
 
+    /* Siempre pantalla de carga — nunca app vacía */
+    document.body.classList.remove('is-ready');
+    document.documentElement.classList.remove('has-cache');
+    showLoadModal('Cargando', 'Espera un momento, por favor…');
+
     bind();
     updateConnBadge();
     await QB.workers.load();
+    if (QB.supervisors && QB.supervisors.enrichFromWorkers) {
+      QB.supervisors.enrichFromWorkers();
+    }
 
-    const cached = QB.api.getCachedPack && QB.api.getCachedPack();
-    const hasCache = !!(cached && (cached.data || []).length);
-
+    let painted = false;
     try {
+      const cached = QB.api.getCachedPack && QB.api.getCachedPack();
+      const hasCache = !!(cached && (cached.data || []).length);
+
       if (hasCache) {
-        /* Con cache: app usable al toque; sync en segundo plano */
         applyPack(cached);
+        painted = true;
         revealApp();
+        QB.export.toast('Ya lista · ' + ((cached.data && cached.data.length) || 0) + ' personas', 'ok');
         showSyncBanner(
           'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
         );
         const r = await QB.api.refresh();
         hideSyncBanner();
-        if ((r.pack.data || []).length) applyPack(r.pack);
+        if ((r.pack.data || []).length) {
+          applyPack(r.pack);
+          painted = true;
+        }
         if (r.changed && !r.error) {
           flashHero();
           QB.export.toast('Se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
         }
       } else {
-        /* Sin cache: modal completo hasta tener data */
-        showLoadModal('Estamos trayendo la data', 'Espera un momento, por favor…');
         const r = await QB.api.refresh();
-        if ((r.pack.data || []).length) applyPack(r.pack);
+        if ((r.pack.data || []).length) {
+          applyPack(r.pack);
+          painted = true;
+        }
         revealApp();
         const n = (r.pack.data && r.pack.data.length) || 0;
-        if (n) QB.export.toast('Listo · ' + n + ' personas', 'ok');
+        if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
         else QB.export.toast('Sheet sin filas · pega data en Google Sheets', 'warn');
       }
 
@@ -133,23 +148,25 @@
         updateLiveBadge();
       });
     } catch (err) {
-      if (hasCache) {
-        hideSyncBanner();
+      hideSyncBanner();
+      const cached = QB.api.getCachedPack && QB.api.getCachedPack();
+      if (cached && (cached.data || []).length) {
+        applyPack(cached);
+        painted = true;
+        revealApp();
         QB.export.toast('Sin red · sigues con el último guardado', 'warn');
       } else {
         revealApp();
         QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
       }
     } finally {
+      if (!document.body.classList.contains('is-ready')) revealApp();
       hideLoadModal();
-      hideSyncBanner();
-      document.body.classList.add('is-ready');
+      if (!painted) hideSyncBanner();
     }
   }
 
   function revealApp() {
-    document.documentElement.classList.add('has-cache');
-    document.body.classList.add('has-cache');
     document.body.classList.add('is-ready');
     hideLoadModal();
     updateConnBadge();
@@ -456,6 +473,26 @@
       });
     }
 
+    const bindExcel = (id, mode) => {
+      const btn = $(id);
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        const people = mergeByWorker(state.report || { data: state.rows || [] }).filter((r) => {
+          const c = Number(r.c || 0);
+          return mode === 'gt40' ? c > 40 : c < 40;
+        });
+        const fechaInfo = state.fecha ? fmtFechaClara(state.fecha) : null;
+        QB.export.excelPeopleByJarras({
+          mode,
+          people,
+          fecha: state.fecha || '',
+          fechaLabel: fechaInfo ? fechaInfo.full : 'Sin fecha'
+        });
+      });
+    };
+    bindExcel('btnExcelLt40', 'lt40');
+    bindExcel('btnExcelGt40', 'gt40');
+
     document.querySelectorAll('[data-img]').forEach((btn) => {
       btn.addEventListener('click', () => QB.export.chartImage(btn.dataset.img, `${btn.dataset.img}.png`));
     });
@@ -506,11 +543,9 @@
     if (text) text.textContent = '…';
 
     if (!hasData) {
-      /* Sin data en pantalla → modal completo */
       document.body.classList.remove('is-ready');
-      showLoadModal('Estamos trayendo la data', 'Espera un momento, por favor…');
+      showLoadModal('Cargando', 'Espera un momento, por favor…');
     } else {
-      /* Con data → app usable + aviso chico */
       showSyncBanner(
         'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
       );
@@ -523,15 +558,17 @@
       }
       if (r.changed && !r.error) {
         flashHero();
-        QB.export.toast('Se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
-      } else if (!r.error) {
-        /* Sin cambios reales: no molestar con modal, solo cerrar banner */
-      } else if (hasData) {
+        QB.export.toast('Ya lista · se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
+      } else if (r.error && hasData) {
         QB.export.toast('Sin red · sigues con lo último', 'warn');
+      } else if (!hasData) {
+        const n = (r.pack.data && r.pack.data.length) || 0;
+        if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
+        else QB.export.toast('Sheet sin filas', 'warn');
       }
     } catch (err) {
       const cached = QB.api.getCachedPack && QB.api.getCachedPack();
-      if (cached) {
+      if (cached && (cached.data || []).length) {
         applyPack(cached);
         QB.export.toast('Error de red · mostrando cache', 'warn');
       } else {
@@ -594,7 +631,7 @@
           cur.modulo = r.modulo || cur.modulo;
           cur.turno = r.turno || cur.turno;
         }
-        if (r.nombreCompleto && (!cur.nombreCompleto || cur.nombre === 'S/N')) {
+        if (r.nombreCompleto && (!cur.nombreCompleto || QB.workers.isJunkName(cur.nombre) || QB.workers.isJunkName(cur.apellido))) {
           cur.nombreCompleto = r.nombreCompleto;
           cur.nombre = r.nombre || cur.nombre;
           cur.apellido = r.apellido || cur.apellido;
@@ -673,9 +710,9 @@
             <span class="stat-label">Grupo líder</span>
             <strong>${escapeHtml(topG ? shortGrupo(topG.grupo) : '—')}</strong>
           </div>
-          <div class="report-stat tone-top" title="Mejor cosechador: ${escapeAttr(top ? QB.avatars.shortName(top) : '—')}${top ? ` · CI ${escapeAttr(top.ci)} · ${fmt(top.c)} jarras` : ''}">
+          <div class="report-stat tone-top" title="Mejor cosechador: ${escapeAttr(top ? (QB.avatars.realName(top) || QB.avatars.shortName(top) || top.ci) : '—')}${top ? ` · CI ${escapeAttr(top.ci)} · ${fmt(top.c)} jarras` : ''}">
             <span class="stat-label">Mejor cosechador</span>
-            <strong>${escapeHtml(top ? QB.avatars.shortName(top) : '—')}</strong>
+            <strong>${escapeHtml(top ? (QB.avatars.shortName(top) || ('CI ' + top.ci)) : '—')}</strong>
           </div>
         </div>
         <p class="hero-confidential">Solo autorizado para la empresa</p>
@@ -792,6 +829,7 @@
   function openGrupoWorkersModal(grupoKey) {
     state.grupoModal = grupoKey;
     state.grupoWorkerQ = '';
+    state.grupoJarFilter = 'all';
     renderGrupoWorkersModal();
   }
 
@@ -799,7 +837,16 @@
     const grupoKey = state.grupoModal || '';
     const q = String(state.grupoWorkerQ || '').trim().toLowerCase();
     const digits = q.replace(/\D/g, '');
-    let people = workersOfGrupo(grupoKey);
+    const jarFilter = state.grupoJarFilter || 'all';
+    const allTeam = workersOfGrupo(grupoKey);
+    let people = allTeam;
+
+    if (jarFilter === 'lt40') {
+      people = people.filter((r) => Number(r.c || 0) < 40);
+    } else if (jarFilter === 'gte40') {
+      people = people.filter((r) => Number(r.c || 0) > 40);
+    }
+
     if (q) {
       people = people.filter((r) => {
         const ci = String(r.ci || '').toLowerCase();
@@ -810,9 +857,18 @@
         return false;
       });
     }
-    const totalJarras = workersOfGrupo(grupoKey).reduce((s, r) => s + (r.c || 0), 0);
+
+    const nLt40 = allTeam.filter((r) => Number(r.c || 0) < 40).length;
+    const nGte40 = allTeam.filter((r) => Number(r.c || 0) > 40).length;
+    const totalJarras = allTeam.reduce((s, r) => s + (r.c || 0), 0);
     const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(grupoKey) : '';
     const jefeShort = QB.supervisors ? QB.supervisors.label(grupoKey) : '';
+    const filterChip = (id, label, count) => {
+      const on = jarFilter === id ? ' is-active' : '';
+      return `<button type="button" class="jar-filter-btn${on}" data-jar-filter="${id}" title="${escapeAttr(label)}">
+        ${escapeHtml(label)} <em>${fmt(count)}</em>
+      </button>`;
+    };
 
     $('modalBody').innerHTML = `
       <header class="sheet-head">
@@ -822,8 +878,13 @@
           jefeFull
             ? `Jefe: <strong>${escapeHtml(jefeShort || jefeFull)}</strong> · `
             : ''
-        }${fmt(workersOfGrupo(grupoKey).length)} personas · ${fmt(totalJarras)} jarras</p>
+        }${fmt(allTeam.length)} personas · ${fmt(totalJarras)} jarras</p>
       </header>
+      <div class="jar-filters" role="group" aria-label="Filtrar por jarras">
+        ${filterChip('lt40', 'Menos de 40', nLt40)}
+        ${filterChip('gte40', 'Más de 40', nGte40)}
+        ${filterChip('all', 'Todos', allTeam.length)}
+      </div>
       <div class="grupo-search">
         <span class="grupo-search-ico" id="grupoSearchIco" aria-hidden="true"></span>
         <input
@@ -839,22 +900,27 @@
         ${
           people.length
             ? people
-                .map(
-                  (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(QB.avatars.shortName(r))} · CI ${escapeAttr(r.ci)} · ${fmt(r.c)} jarras · toca para detalle">
+                .map((r, i) => {
+                  const name = QB.avatars.shortName(r);
+                  const label = name || (r.ci ? 'CI ' + r.ci : '—');
+                  const full = QB.avatars.realName(r) || label;
+                  return `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(full)} · CI ${escapeAttr(r.ci)} · ${fmt(r.c)} jarras · toca para detalle">
               ${QB.avatars.img(r, 40)}
               <span class="worker-main">
-                <strong title="${escapeAttr(r.nombreCompleto || QB.avatars.shortName(r))}">${escapeHtml(QB.avatars.shortName(r))}</strong>
+                <strong title="${escapeAttr(full)}">${escapeHtml(label)}</strong>
                 <span title="CI ${escapeAttr(r.ci)}">CI ${escapeHtml(r.ci)} · #${i + 1}</span>
               </span>
               <span class="worker-jarras" title="${fmt(r.c)} jarras">
                 <em>${fmt(r.c)}</em>
                 <small>jarras</small>
               </span>
-            </button>`
-                )
+            </button>`;
+                })
                 .join('')
             : `<p class="workers-empty">${
-                q ? `Sin resultados para “${escapeHtml(q)}”` : 'Sin trabajadores en este grupo'
+                q || jarFilter !== 'all'
+                  ? 'Sin personas en este filtro'
+                  : 'Sin trabajadores en este grupo'
               }</p>`
         }
       </div>
@@ -872,12 +938,19 @@
     const ico = $('grupoSearchIco');
     if (ico) ico.innerHTML = QB.icons.search(18);
 
+    document.querySelectorAll('[data-jar-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.grupoJarFilter = btn.getAttribute('data-jar-filter') || 'all';
+        renderGrupoWorkersModal();
+      });
+    });
+
     const input = $('buscaGrupoWorker');
     if (input) {
       setTimeout(() => {
-        input.focus();
-        const len = input.value.length;
-        input.setSelectionRange(len, len);
+        if (document.activeElement !== input) {
+          /* no forzar focus al cambiar filtro */
+        }
       }, 40);
       let t;
       input.addEventListener('input', () => {
@@ -1051,19 +1124,22 @@
       return;
     }
     list.innerHTML = people
-      .map(
-        (r, i) => `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(QB.avatars.shortName(r))} · CI ${escapeAttr(r.ci)} · ${escapeAttr(shortGrupo(r.grupo))} · ${fmt(r.c)} jarras · toca para ver detalle">
+      .map((r, i) => {
+        const name = QB.avatars.shortName(r);
+        const label = name || (r.ci ? 'CI ' + r.ci : '—');
+        const full = QB.avatars.realName(r) || label;
+        return `<button type="button" class="worker-row" role="listitem" data-ci="${escapeAttr(r.ci)}" title="#${i + 1} · ${escapeAttr(full)} · CI ${escapeAttr(r.ci)} · ${escapeAttr(shortGrupo(r.grupo))} · ${fmt(r.c)} jarras · toca para ver detalle">
           ${QB.avatars.img(r, 40)}
           <span class="worker-main">
-            <strong title="${escapeAttr(r.nombreCompleto || QB.avatars.shortName(r))}">${escapeHtml(QB.avatars.shortName(r))}</strong>
+            <strong title="${escapeAttr(full)}">${escapeHtml(label)}</strong>
             <span title="CI ${escapeAttr(r.ci)} · ${escapeAttr(shortGrupo(r.grupo))}">CI ${escapeHtml(r.ci)} · ${escapeHtml(shortGrupo(r.grupo))} · #${i + 1}</span>
           </span>
           <span class="worker-jarras" title="${fmt(r.c)} jarras cosechadas">
             <em>${fmt(r.c)}</em>
             <small>jarras</small>
           </span>
-        </button>`
-      )
+        </button>`;
+      })
       .join('');
     list.querySelectorAll('.worker-row').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1141,7 +1217,7 @@
       <div style="display:flex;gap:0.85rem;align-items:center;margin-bottom:0.85rem">
         ${QB.avatars.img(row, 72)}
         <div>
-          <h3 id="modalTitle" style="margin:0">${escapeHtml(row.nombreCompleto || QB.avatars.shortName(row) || 'Trabajador')}</h3>
+          <h3 id="modalTitle" style="margin:0">${escapeHtml(QB.avatars.realName(row) || QB.avatars.shortName(row) || (row.ci ? 'CI ' + row.ci : 'Trabajador'))}</h3>
           <p class="meta" style="margin:0.25rem 0 0">CI ${row.ci}${rank ? ` · #${rank} en ranking` : ''} · ${escapeHtml(row.grupo || '—')}
             ${w ? ` · <strong style="color:var(--accent)">Activo padrón</strong>` : ''}
           </p>
@@ -1258,6 +1334,7 @@
     }
     state.grupoModal = '';
     state.grupoWorkerQ = '';
+    state.grupoJarFilter = 'all';
     QB.charts.dispose('chartModal');
   }
 

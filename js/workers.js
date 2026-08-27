@@ -5,6 +5,38 @@ QB.workers = {
   map: new Map(),
   ready: false,
 
+  /**
+   * Limpia CI/DNI a dígitos; DNI PE = 8 (rellena ceros a la izquierda si Sheets los perdió).
+   * "S/N (70.845.004-E)" → "70845004"
+   * 814579 (number) → "00814579"
+   */
+  cleanCi(v) {
+    if (v == null || v === '') return '';
+    let digits = '';
+    if (typeof v === 'number' && isFinite(v)) {
+      digits = String(Math.round(v));
+    } else {
+      const s = String(v).trim();
+      if (!s) return '';
+      const paren = s.match(/\(([^)]+)\)/);
+      const target = paren ? paren[1] : s;
+      digits = String(target).replace(/\D/g, '');
+    }
+    if (!digits) return '';
+    if (digits.length < 8) digits = digits.padStart(8, '0');
+    return digits.slice(0, 9);
+  },
+
+  /** Basura de hoja: S/N, CI formateado, vacío */
+  isJunkName(s) {
+    const t = String(s == null ? '' : s).trim();
+    if (!t) return true;
+    if (/^S\/N\b/i.test(t)) return true;
+    if (t.charAt(0) === '(') return true;
+    if (/^\d{1,2}([.\s]\d{3}){2}([-\s]?\w)?$/i.test(t)) return true;
+    return false;
+  },
+
   async load() {
     if (location.protocol === 'file:') {
       return this.map;
@@ -15,11 +47,13 @@ QB.workers = {
       const list = await res.json();
       const map = new Map();
       for (const w of list) {
-        const dni = String(w.dni || '').replace(/\D/g, '');
+        const dni = this.cleanCi(w.dni);
         if (!dni) continue;
+        if (map.has(dni)) continue;
+        const nom = String(w.nombre || '').trim();
         map.set(dni, {
           dni,
-          nombreCompleto: String(w.nombre || '').trim(),
+          nombreCompleto: this.isJunkName(nom) ? '' : nom,
           cargo: w.cargo || '',
           fechaIngreso: w.fechaIngreso || ''
         });
@@ -34,23 +68,32 @@ QB.workers = {
   },
 
   get(ci) {
-    const dni = String(ci || '').replace(/\D/g, '');
+    const dni = this.cleanCi(ci);
+    if (!dni) return null;
     return this.map.get(dni) || null;
   },
 
-  /** Une producción + padrón activo; prioriza nombre del listado */
+  /**
+   * Une producción + padrón (O(1) por fila).
+   * Si hay nombre en trabajadores.json → lo pone; si no → vacío (nunca S/N).
+   */
   enrich(row) {
-    const w = this.get(row.ci);
-    let nombre = row.nombre || '';
-    let apellido = row.apellido || '';
-    let activo = false;
-    let nombreCompleto = '';
+    const ciClean =
+      this.cleanCi(row.ci) ||
+      this.cleanCi(row.apellido) ||
+      this.cleanCi(row.nombre) ||
+      this.cleanCi(row.nombreCompleto);
 
-    if (w) {
+    const w = ciClean ? this.map.get(ciClean) : null;
+    let nombre = '';
+    let apellido = '';
+    let nombreCompleto = '';
+    let activo = false;
+
+    if (w && w.nombreCompleto) {
       activo = true;
       nombreCompleto = w.nombreCompleto;
-      const parts = w.nombreCompleto.split(/\s+/).filter(Boolean);
-      // Heurística PE: APELLIDOS NOMBRES → primeras 2 tokens apellido, resto nombres
+      const parts = nombreCompleto.split(/\s+/).filter(Boolean);
       if (parts.length >= 3) {
         apellido = parts.slice(0, 2).join(' ');
         nombre = parts.slice(2).join(' ');
@@ -58,19 +101,26 @@ QB.workers = {
         apellido = parts[0];
         nombre = parts[1];
       } else {
-        nombre = w.nombreCompleto;
-        apellido = '';
+        nombre = nombreCompleto;
       }
-    } else {
-      if (!nombre || nombre === 'S/N') nombre = 'S/N';
-      nombreCompleto = [nombre, apellido].filter(Boolean).join(' ').trim();
     }
 
     return {
-      ...row,
+      fecha: row.fecha,
+      ci: ciClean || '',
       nombre,
       apellido,
       nombreCompleto,
+      grupo: row.grupo || '',
+      variedad: row.variedad || '',
+      huerto: row.huerto || '',
+      c: row.c,
+      filas: row.filas,
+      lotes: row.lotes,
+      modulos: row.modulos,
+      turnos: row.turnos,
+      modulo: row.modulo,
+      turno: row.turno,
       activo,
       cargo: w ? w.cargo : ''
     };

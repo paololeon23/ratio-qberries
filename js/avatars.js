@@ -25,40 +25,50 @@ QB.avatars = {
     return this.colors[this.hash(seed) % this.colors.length];
   },
 
-  initials(row) {
-    const ape = (row.apellido || '').trim();
-    const nom = (row.nombre || '').trim();
-    const full = (row.nombreCompleto || '').trim();
-    if (ape && !ape.startsWith('(')) {
-      const parts = ape.split(/\s+/);
-      const a = (parts[0] && parts[0][0]) || '';
-      const b = (parts[1] && parts[1][0]) || (parts[0] && parts[0][1]) || '';
-      return (a + b).toUpperCase();
-    }
-    if (nom && nom !== 'S/N') return nom.slice(0, 2).toUpperCase();
-    if (full) {
-      const p = full.split(/\s+/);
-      return (((p[0] && p[0][0]) || '') + ((p[1] && p[1][0]) || '')).toUpperCase();
-    }
-    return String(row.ci || 'QB').slice(-2);
+  _junk(s) {
+    return QB.workers && QB.workers.isJunkName ? QB.workers.isJunkName(s) : !String(s || '').trim();
   },
 
-  shortName(row) {
-    const ape = (row.apellido || '').trim();
-    if (ape && !ape.startsWith('(')) return ape.split(/\s+/).slice(0, 2).join(' ');
-    const nom = (row.nombre || '').trim();
-    if (nom && nom !== 'S/N') return nom.split(/\s+/)[0];
+  /** Nombre limpio: padrón o vacío (nunca S/N). */
+  realName(row) {
     const full = (row.nombreCompleto || '').trim();
-    if (full) return full.split(/\s+/).slice(0, 2).join(' ');
-    return row.ci || '—';
+    if (full && !this._junk(full)) return full;
+    const ape = (row.apellido || '').trim();
+    const nom = (row.nombre || '').trim();
+    if (ape && !this._junk(ape)) {
+      if (nom && !this._junk(nom)) return (ape + ' ' + nom).trim();
+      return ape;
+    }
+    if (nom && !this._junk(nom)) return nom;
+    return '';
+  },
+
+  initials(row) {
+    const full = this.realName(row);
+    if (full) {
+      const p = full.split(/\s+/).filter(Boolean);
+      const a = (p[0] && p[0][0]) || '';
+      const b = (p[1] && p[1][0]) || (p[0] && p[0][1]) || '';
+      return (a + b).toUpperCase();
+    }
+    const ci = String(row.ci || '').replace(/\D/g, '');
+    return ci ? ci.slice(-2) : '—';
+  },
+
+  /** Apellidos cortos si hay nombre; si no, vacío (CI va en la línea de abajo). */
+  shortName(row) {
+    const full = this.realName(row);
+    if (!full) return '';
+    return full.split(/\s+/).slice(0, 2).join(' ');
   },
 
   /** Badge de iniciales (fácil de reconocer en campo) */
   img(row, size = 56) {
     const ini = this.initials(row);
-    const col = this.colorOf(row.ci || row.nombreCompleto || 'x');
+    const col = this.colorOf(row.ci || 'x');
     const fs = Math.max(11, Math.round(size * 0.34));
-    return `<span class="avatar avatar-initials" style="width:${size}px;height:${size}px;background:${col.bg};color:${col.fg};font-size:${fs}px" title="${String(row.nombreCompleto || this.shortName(row) || ini).replace(/"/g, '&quot;')} · CI ${String(row.ci || '—')}">${ini}</span>`;
+    const tipName = this.realName(row) || this.shortName(row) || ini;
+    return `<span class="avatar avatar-initials" style="width:${size}px;height:${size}px;background:${col.bg};color:${col.fg};font-size:${fs}px" title="${String(tipName).replace(/"/g, '&quot;')} · CI ${String(row.ci || '—')}">${ini}</span>`;
   },
 
   /**
@@ -67,7 +77,8 @@ QB.avatars = {
    */
   chip(row, { rank = null } = {}) {
     const name = this.shortName(row);
-    const full = String(row.nombreCompleto || `${row.apellido || ''} ${row.nombre || ''}`.trim() || name);
+    const label = name || (row.ci ? 'CI ' + row.ci : '—');
+    const full = this.realName(row) || label;
     const grupo = (row.grupo || '').replace(/^Grupo\s+/i, '');
     const jarras = Number(row.c || 0).toLocaleString('es-PE');
     const tip = [
@@ -85,13 +96,14 @@ QB.avatars = {
       rank == null
         ? ''
         : `<span class="person-rank ${rank <= 3 ? 'is-top' : ''}" title="Puesto #${rank} del día">#${rank}</span>`;
+    const shown = label.length > 18 ? label.slice(0, 17) + '…' : label;
     return `<button type="button" class="person-chip" data-ci="${row.ci}" title="${tip}">
       <div class="person-chip-top">
         ${rankHtml}
         ${this.img(row, 48)}
       </div>
       <span class="person-meta">
-        <strong title="${full.replace(/"/g, '&quot;')}">${name.length > 18 ? name.slice(0, 17) + '…' : name}</strong>
+        <strong title="${full.replace(/"/g, '&quot;')}">${shown}</strong>
         <em title="${jarras} jarras cosechadas">${jarras} jarras</em>
         ${grupo ? `<span class="person-grupo" title="Grupo ${grupo}">${grupo.length > 16 ? grupo.slice(0, 15) + '…' : grupo}</span>` : ''}
       </span>

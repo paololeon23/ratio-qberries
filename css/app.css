@@ -1537,6 +1537,44 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   background: linear-gradient(135deg, var(--brand-green) 0%, var(--brand-lime) 100%);
   filter: brightness(1.03);
 }
+.jar-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0 0 0.65rem;
+}
+.jar-filter-btn {
+  appearance: none;
+  border: 1px solid #dfe8e1;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.5rem 0.35rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #3d4a42;
+  cursor: pointer;
+  line-height: 1.2;
+  -webkit-tap-highlight-color: transparent;
+}
+.jar-filter-btn em {
+  display: block;
+  margin-top: 0.15rem;
+  font-style: normal;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.jar-filter-btn.is-active {
+  border-color: #4ab848;
+  background: linear-gradient(160deg, #fff 0%, #eaf7ea 100%);
+  color: #1f6b35;
+  box-shadow: 0 0 0 2px rgba(74, 184, 72, 0.18);
+}
+.jar-filter-btn.is-active em {
+  color: #1f6b35;
+}
+
 .grupo-search {
   position: relative;
   display: flex;
@@ -1958,6 +1996,50 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   line-height: 1.35;
 }
 .chart-actions { display: flex; gap: 0.35rem; }
+.excel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.btn-excel {
+  appearance: none;
+  border: 1px solid #c6e9c5;
+  background: linear-gradient(160deg, #fff 0%, #eaf7ea 100%);
+  color: #1f6b35;
+  border-radius: 10px;
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.2;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-excel.is-high {
+  border-color: #fde0b0;
+  background: linear-gradient(160deg, #fff 0%, #fff4e5 100%);
+  color: #9a3412;
+}
+.btn-excel:active {
+  transform: scale(0.98);
+}
+@media (max-width: 699px) {
+  .map-panel .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .excel-actions {
+    justify-content: stretch;
+  }
+  .excel-actions .btn-excel {
+    flex: 1;
+    text-align: center;
+  }
+}
 .chart-wrap {
   position: relative;
   width: 100%;
@@ -2574,7 +2656,13 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   display: grid; place-items: end center; padding: 0;
 }
 @media (min-width: 720px) {
-  .modal-root { place-items: center; padding: 1rem; }
+  /* Más abajo · no pegado al tope al 100% */
+  .modal-root {
+    place-items: start center;
+    align-content: start;
+    padding: max(4.75rem, 10vh) 1.25rem 2rem;
+    overflow-y: auto;
+  }
 }
 .modal-backdrop {
   position: absolute; inset: 0;
@@ -2598,6 +2686,8 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
     border-radius: 16px;
     box-shadow: 0 18px 44px rgba(20, 28, 36, 0.14);
     padding-bottom: 1.35rem;
+    max-height: min(78vh, 640px);
+    margin-bottom: 1rem;
   }
 }
 .modal.wide { width: min(560px, 100%); }
@@ -3186,7 +3276,7 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
   }
 
   .attn-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.6rem;
   }
 

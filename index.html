@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m162" />
+  <link rel="stylesheet" href="css/app.css?v=m261" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -34,18 +34,19 @@
     #loadOverlay {
       position: fixed; inset: 0; z-index: 9999;
       display: grid; place-items: center;
-      padding: 1.25rem;
+      padding: max(1.75rem, env(safe-area-inset-top, 0px)) max(1.75rem, env(safe-area-inset-right, 0px)) max(1.75rem, env(safe-area-inset-bottom, 0px)) max(1.75rem, env(safe-area-inset-left, 0px));
       background: linear-gradient(160deg, #f3faf1 0%, #fff8f0 55%, #ffffff 100%);
     }
     #loadOverlay .load-card {
-      width: min(92vw, 320px); text-align: center;
-      background: #fff; border-radius: 20px;
-      padding: 1.6rem 1.3rem 1.4rem;
+      width: min(92vw, 360px); text-align: center;
+      background: #fff; border-radius: 22px;
+      padding: 2rem 1.85rem 1.9rem;
       box-shadow: 0 18px 48px rgba(22, 48, 31, 0.14);
       border: 1px solid rgba(74, 184, 72, 0.18);
+      display: flex; flex-direction: column; align-items: center; gap: 0.8rem;
     }
     #loadOverlay .load-spinner {
-      width: 48px; height: 48px; margin: 0 auto 1rem;
+      width: 52px; height: 52px; margin: 0 0 0.15rem;
       border-radius: 50%;
       border: 3.5px solid #e8f5e4;
       border-top-color: #4ab848;
@@ -54,11 +55,11 @@
     }
     @keyframes qb-spin { to { transform: rotate(360deg); } }
     #loadOverlay h2 {
-      margin: 0 0 0.4rem; font-family: Outfit, system-ui, sans-serif;
-      font-size: 1.2rem; font-weight: 700; color: #16301f;
+      margin: 0; font-family: Outfit, system-ui, sans-serif;
+      font-size: 1.28rem; font-weight: 700; color: #16301f; line-height: 1.25;
     }
-    #loadOverlay p { margin: 0; color: #4a5c52; font-size: 0.95rem; line-height: 1.4; }
-    #loadOverlay .load-hint { margin-top: 0.7rem !important; font-size: 0.8rem !important; color: #8a9a90 !important; }
+    #loadOverlay p { margin: 0; color: #4a5c52; font-size: 0.98rem; line-height: 1.5; }
+    #loadOverlay .load-hint { margin-top: 0.25rem !important; font-size: 0.82rem !important; color: #8a9a90 !important; line-height: 1.45 !important; }
   </style>
   <script>
     (function () {
@@ -95,7 +96,7 @@
       <ol>
         <li>Abre la carpeta en VS Code / Cursor</li>
         <li>Usa <strong>Live Server</strong> → “Open with Live Server”</li>
-        <li>O publica en Netlify; la app lee la API de Google Sheets</li>
+        <li>O publica en Netlify; la app lee la API del servidor</li>
       </ol>
       <p class="file-protocol-alt">No abras <code>index.html</code> con doble clic (<code>file://</code>).</p>
     </article>
@@ -131,8 +132,8 @@
           type="button"
           id="btnRefresh"
           class="status-chip status-chip-btn is-refresh"
-          title="Buscar datos nuevos · si falla, mantiene el último cache"
-          aria-label="Actualizar reporte"
+          title="Actualizar información o la app"
+          aria-label="Actualizar"
         >
           <span class="status-ico" id="icoRefresh" aria-hidden="true"></span>
           <span class="status-text">Actualizar</span>
@@ -149,20 +150,34 @@
 
   <section class="hero-summary" id="heroSummary" aria-live="polite"></section>
 
+  <section class="report-nav-section" aria-label="Navegación del reporte">
+    <div class="report-nav-head">
+      <p class="report-nav-kicker">Secciones del reporte</p>
+      <p class="report-nav-hint">Navega por el informe del día</p>
+    </div>
   <nav class="report-nav" aria-label="Secciones del reporte">
     <button type="button" class="report-tab is-active" data-tab="resumen" title="Resumen del día" aria-label="Resumen">
+      <span class="tab-ico" data-tab-ico="clipboard" aria-hidden="true"></span>
       <span class="tab-label">Resumen</span>
     </button>
     <button type="button" class="report-tab" data-tab="grupos" title="Mapa de grupos LIC" aria-label="Grupos">
+      <span class="tab-ico" data-tab-ico="building" aria-hidden="true"></span>
       <span class="tab-label">Grupos</span>
     </button>
     <button type="button" class="report-tab" data-tab="personas" title="Personas del día" aria-label="Personas">
+      <span class="tab-ico" data-tab-ico="users" aria-hidden="true"></span>
       <span class="tab-label">Personas</span>
     </button>
     <button type="button" class="report-tab" data-tab="avance" title="Avance y gráficos" aria-label="Avance">
+      <span class="tab-ico" data-tab-ico="bars" aria-hidden="true"></span>
       <span class="tab-label">Avance</span>
     </button>
+    <button type="button" class="report-tab" data-tab="comparacion" title="Comparar todas las hojas" aria-label="Comparación">
+      <span class="tab-ico" data-tab-ico="layers" aria-hidden="true"></span>
+      <span class="tab-label"><span class="tab-long">Comparación</span><span class="tab-short">Comp.</span></span>
+    </button>
   </nav>
+  </section>
 
   <div class="report-panels">
     <section class="report-panel is-active" id="panelResumen" data-panel="resumen">
@@ -172,7 +187,7 @@
             <span class="title-ico tone-orange" data-title-ico="bell" aria-hidden="true"></span>
             <div>
               <h2>Atención</h2>
-              <p class="muted">Solo lo urgente del día</p>
+              <p class="muted">Mejor y peor LIC por jarras totales · Menos personal</p>
             </div>
           </div>
         </div>
@@ -346,23 +361,39 @@
             </div>
           </div>
           <div class="thermo-layout">
-            <div class="thermo-visual" id="thermoVisual" aria-hidden="true">
-              <div class="thermo-scale">
-                <span>Alto</span><span>Medio</span><span>Bajo</span>
-              </div>
-              <div class="thermo">
-                <div class="thermo-tube">
-                  <div class="thermo-fill" id="thermoFill"></div>
+            <div class="thermo-kpi-row">
+              <div class="thermo-kpi-card">
+                <span class="thermo-kpi-label">Promedio del día</span>
+                <div class="thermo-metric">
+                  <strong id="thermoValue">—</strong>
+                  <span class="thermo-unit">jarras / persona</span>
                 </div>
-                <div class="thermo-bulb" id="thermoBulb"></div>
               </div>
-              <div class="thermo-readout">
-                <strong id="thermoValue">—</strong>
-                <span>jarras / persona</span>
-                <em id="thermoZone">Sin datos</em>
+              <div class="thermo-status-card">
+                <span class="thermo-kpi-label">Estado del ritmo</span>
+                <span class="thermo-badge" id="thermoZone">Sin datos</span>
               </div>
             </div>
-            <div class="chart-wrap chart-gauge" id="chartGauge"></div>
+            <div class="thermo-visual-row">
+              <div class="thermo-visual-card">
+                <p class="thermo-visual-title">Termómetro</p>
+                <div class="thermo-side" aria-hidden="true">
+                  <div class="thermo-scale">
+                    <span>Alto</span><span>Medio</span><span>Bajo</span>
+                  </div>
+                  <div class="thermo">
+                    <div class="thermo-tube">
+                      <div class="thermo-fill" id="thermoFill"></div>
+                    </div>
+                    <div class="thermo-bulb" id="thermoBulb"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="thermo-visual-card">
+                <p class="thermo-visual-title">Velocímetro</p>
+                <div class="chart-wrap chart-gauge" id="chartGauge"></div>
+              </div>
+            </div>
           </div>
           <p class="chart-insight" id="insightGauge"></p>
         </section>
@@ -385,6 +416,37 @@
           <p class="chart-insight" id="insightDist"></p>
         </section>
       </div>
+    </section>
+
+    <section class="report-panel" id="panelComparacion" data-panel="comparacion" hidden>
+      <section class="panel compare-panel" title="Comparación de todas las hojas de cosecha">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-lime" data-title-ico="layers" aria-hidden="true"></span>
+            <div>
+              <h2>Comparación</h2>
+              <p class="muted" id="compareMeta">Comparación de hojas · personas con menos de 40 jarras</p>
+            </div>
+          </div>
+        </div>
+        <div class="compare-sheet-bar" id="compareSheetBar">
+          <div class="compare-sheet-head">
+            <div>
+              <p class="compare-sheet-title">Hojas a comparar</p>
+              <p class="compare-sheet-hint">Toca <strong>×</strong> en cualquier hoja para no incluirla</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btnCompareRun" title="Actualizar comparación">
+              Comparar
+            </button>
+          </div>
+          <div class="compare-sheet-chips" id="compareSheetChips" role="list" aria-label="Hojas incluidas"></div>
+          <div class="compare-sheet-excluded-wrap" id="compareExcludedWrap" hidden>
+            <p class="compare-sheet-excluded-label">Excluidas · toca para volver a incluir</p>
+            <div class="compare-sheet-chips compare-sheet-chips--excluded" id="compareExcludedChips" role="list"></div>
+          </div>
+        </div>
+        <div id="compareContent" class="compare-content" aria-live="polite"></div>
+      </section>
     </section>
   </div>
   </div><!-- /.app-shell -->
@@ -442,16 +504,16 @@
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m162"></script>
-  <script src="js/workers.js?v=m162"></script>
-  <script src="js/api.js?v=m162"></script>
-  <script src="js/icons.js?v=m162"></script>
-  <script src="js/avatars.js?v=m162"></script>
-  <script src="js/supervisors.js?v=m162"></script>
-  <script src="js/charts.js?v=m162"></script>
-  <script src="js/select.js?v=m162"></script>
-  <script src="js/export.js?v=m162"></script>
-  <script src="js/app.js?v=m162"></script>
+  <script src="js/config.js?v=m261"></script>
+  <script src="js/workers.js?v=m261"></script>
+  <script src="js/api.js?v=m261"></script>
+  <script src="js/icons.js?v=m261"></script>
+  <script src="js/avatars.js?v=m261"></script>
+  <script src="js/supervisors.js?v=m261"></script>
+  <script src="js/charts.js?v=m261"></script>
+  <script src="js/select.js?v=m261"></script>
+  <script src="js/export.js?v=m261"></script>
+  <script src="js/app.js?v=m261"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

@@ -338,8 +338,217 @@ QB.export = {
     this.toast('PDF descargado');
   },
 
+  /** Escapar texto para XML de hoja Excel */
+  _xmlEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
+  /** Columna Excel 0-based → A, B, … AA */
+  _xlsxCol(n) {
+    let s = '';
+    let x = n + 1;
+    while (x > 0) {
+      const m = (x - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      x = Math.floor((x - 1) / 26);
+    }
+    return s;
+  },
+
+  _crc32(bytes) {
+    let table = this._crcTable;
+    if (!table) {
+      table = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        table[i] = c >>> 0;
+      }
+      this._crcTable = table;
+    }
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) {
+      crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  },
+
+  _u16(n) {
+    const b = new Uint8Array(2);
+    b[0] = n & 0xff;
+    b[1] = (n >>> 8) & 0xff;
+    return b;
+  },
+
+  _u32(n) {
+    const b = new Uint8Array(4);
+    b[0] = n & 0xff;
+    b[1] = (n >>> 8) & 0xff;
+    b[2] = (n >>> 16) & 0xff;
+    b[3] = (n >>> 24) & 0xff;
+    return b;
+  },
+
+  /** ZIP sin compresión (válido para .xlsx) */
+  _zipStore(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+
+    files.forEach((f) => {
+      const nameBytes = enc.encode(f.name);
+      const data = f.data instanceof Uint8Array ? f.data : enc.encode(f.data);
+      const crc = this._crc32(data);
+      const local = new Uint8Array(30 + nameBytes.length + data.length);
+      local.set([0x50, 0x4b, 0x03, 0x04], 0);
+      local.set(this._u16(20), 4);
+      local.set(this._u16(0), 6);
+      local.set(this._u16(0), 8);
+      local.set(this._u16(0), 10);
+      local.set(this._u16(0), 12);
+      local.set(this._u32(crc), 14);
+      local.set(this._u32(data.length), 18);
+      local.set(this._u32(data.length), 22);
+      local.set(this._u16(nameBytes.length), 26);
+      local.set(this._u16(0), 28);
+      local.set(nameBytes, 30);
+      local.set(data, 30 + nameBytes.length);
+      parts.push(local);
+
+      const cen = new Uint8Array(46 + nameBytes.length);
+      cen.set([0x50, 0x4b, 0x01, 0x02], 0);
+      cen.set(this._u16(20), 4);
+      cen.set(this._u16(20), 6);
+      cen.set(this._u16(0), 8);
+      cen.set(this._u16(0), 10);
+      cen.set(this._u16(0), 12);
+      cen.set(this._u16(0), 14);
+      cen.set(this._u32(crc), 16);
+      cen.set(this._u32(data.length), 20);
+      cen.set(this._u32(data.length), 24);
+      cen.set(this._u16(nameBytes.length), 28);
+      cen.set(this._u16(0), 30);
+      cen.set(this._u16(0), 32);
+      cen.set(this._u16(0), 34);
+      cen.set(this._u16(0), 36);
+      cen.set(this._u32(0), 38);
+      cen.set(this._u32(offset), 42);
+      cen.set(nameBytes, 46);
+      central.push(cen);
+      offset += local.length;
+    });
+
+    const centralSize = central.reduce((n, c) => n + c.length, 0);
+    const end = new Uint8Array(22);
+    end.set([0x50, 0x4b, 0x05, 0x06], 0);
+    end.set(this._u16(0), 4);
+    end.set(this._u16(0), 6);
+    end.set(this._u16(files.length), 8);
+    end.set(this._u16(files.length), 10);
+    end.set(this._u32(centralSize), 12);
+    end.set(this._u32(offset), 16);
+    end.set(this._u16(0), 20);
+
+    const total = offset + centralSize + 22;
+    const out = new Uint8Array(total);
+    let p = 0;
+    parts.forEach((chunk) => {
+      out.set(chunk, p);
+      p += chunk.length;
+    });
+    central.forEach((chunk) => {
+      out.set(chunk, p);
+      p += chunk.length;
+    });
+    out.set(end, p);
+    return out;
+  },
+
   /**
-   * Excel (CSV UTF-8) · personas por umbral de jarras
+   * Genera .xlsx real (OOXML) desde filas [[...], ...]
+   * Celdas string = texto (CI no pierde ceros); números = number
+   */
+  _xlsxFromRows(rows, sheetName) {
+    const esc = (s) => this._xmlEsc(s);
+    const name = String(sheetName || 'Datos').slice(0, 31) || 'Datos';
+    let sheetBody = '';
+    rows.forEach((row, ri) => {
+      const r = ri + 1;
+      let cells = '';
+      (row || []).forEach((val, ci) => {
+        const ref = this._xlsxCol(ci) + r;
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          cells += `<c r="${ref}"><v>${val}</v></c>`;
+        } else {
+          cells += `<c r="${ref}" t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+        }
+      });
+      sheetBody += `<row r="${r}">${cells}</row>`;
+    });
+
+    const sheetXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetData>' +
+      sheetBody +
+      '</sheetData></worksheet>';
+
+    const workbookXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheets><sheet name="' +
+      esc(name) +
+      '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+
+    const relsXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>';
+
+    const wbRelsXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '</Relationships>';
+
+    const contentTypes =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '</Types>';
+
+    return this._zipStore([
+      { name: '[Content_Types].xml', data: contentTypes },
+      { name: '_rels/.rels', data: relsXml },
+      { name: 'xl/workbook.xml', data: workbookXml },
+      { name: 'xl/_rels/workbook.xml.rels', data: wbRelsXml },
+      { name: 'xl/worksheets/sheet1.xml', data: sheetXml }
+    ]);
+  },
+
+  _downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  },
+
+  /**
+   * Excel .xlsx · personas por umbral de jarras
    * meta: { mode: 'lt40'|'gt40', people[], fecha, fechaLabel }
    */
   excelPeopleByJarras(meta) {
@@ -351,15 +560,10 @@ QB.export = {
       return;
     }
 
-    const esc = (v) => {
-      const s = String(v == null ? '' : v);
-      if (/[;"\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    };
     const shortGrupo = (g) => String(g || '—').replace(/^Grupo\s+/i, '') || '—';
-    const jefeDe = (g) => {
+    const jefeDe = (g, fecha) => {
       if (!QB.supervisors) return '';
-      return QB.supervisors.fullLabel(g) || QB.supervisors.label(g) || '';
+      return QB.supervisors.fullLabel(g, fecha) || QB.supervisors.label(g, fecha) || '';
     };
     const nombreDe = (r) =>
       (QB.avatars && QB.avatars.realName(r)) ||
@@ -367,45 +571,83 @@ QB.export = {
       r.ci ||
       '—';
 
-    const rows = [
-      ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Fecha'].map(esc).join(';')
-    ];
+    const rows = [['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Fecha']];
     people.forEach((r) => {
-      rows.push(
-        [
-          r.ci || '',
-          nombreDe(r),
-          shortGrupo(r.grupo),
-          jefeDe(r.grupo),
-          Number(r.c || 0),
-          meta.fechaLabel || meta.fecha || ''
-        ]
-          .map(esc)
-          .join(';')
-      );
+      rows.push([
+        String(r.ci || ''),
+        nombreDe(r),
+        shortGrupo(r.grupo),
+        jefeDe(r.grupo, meta.fecha),
+        Number(r.c || 0),
+        meta.fechaLabel || meta.fecha || ''
+      ]);
     });
 
-    const bom = '\uFEFF';
-    const csv = bom + rows.join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const bytes = this._xlsxFromRows(rows, mode === 'gt40' ? 'Mas de 40' : 'Menos de 40');
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
     const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_');
     const tag = mode === 'gt40' ? 'mas_de_40' : 'menos_de_40';
-    const filename = 'QBerries_' + tag + '_jarras_' + fechaSlug + '.csv';
+    const filename = 'QBerries_' + tag + '_jarras_' + fechaSlug + '.xlsx';
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-
+    this._downloadBlob(blob, filename);
     this.toast(
       'Excel descargado · ' +
         people.length +
         ' personas · ' +
         (mode === 'gt40' ? 'más de 40' : 'menos de 40')
     );
+  },
+
+  /**
+   * Excel comparación multi-hoja · menos de 40 jarras
+   * meta: { days[], people[], fechas[] }
+   */
+  excelCompareLt40Matrix(meta) {
+    meta = meta || {};
+    const days = meta.days || [];
+    const people = [...(meta.people || [])];
+    if (!people.length || !days.length) {
+      this.toast('Sin datos para exportar', 'warn');
+      return;
+    }
+
+    const header = [
+      'CI',
+      'Nombre',
+      'Grupo LIC',
+      'Supervisor',
+      ...days.map((d) => (d.short || d.label || d.fecha) + ' · jarras'),
+      'Promedio',
+      'Condición'
+    ];
+    const rows = [header];
+
+    people.forEach((p) => {
+      rows.push([
+        String(p.ci || ''),
+        p.nombre || '',
+        p.grupo || '',
+        p.supervisor && p.supervisor !== '—' ? p.supervisor : p.supervisorShort || '',
+        ...days.map((d, i) => {
+          const v = p.values[i];
+          return v == null ? '' : Number(v) || 0;
+        }),
+        Number(p.promedio) || 0,
+        p.condicion || ''
+      ]);
+    });
+
+    const bytes = this._xlsxFromRows(rows, 'Comparacion menos 40');
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const slug = days
+      .map((d) => String(d.short || d.fecha || '').replace(/\//g, '-'))
+      .join('_');
+    const filename = 'QBerries_comparacion_menos_40_' + slug + '.xlsx';
+    this._downloadBlob(blob, filename);
+    this.toast('Excel descargado · ' + people.length + ' personas · ' + days.length + ' hojas');
   }
 };

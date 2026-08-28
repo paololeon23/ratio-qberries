@@ -1,19 +1,19 @@
 /* Service worker — app usable sin internet (shell; datos siempre frescos en red) */
-const CACHE = 'qb-rendimientos-m162';
+const CACHE = 'qb-rendimientos-m261';
 const PRECACHE = [
   './',
   './index.html',
-  './css/app.css?v=m162',
-  './js/config.js?v=m162',
-  './js/workers.js?v=m162',
-  './js/api.js?v=m162',
-  './js/icons.js?v=m162',
-  './js/avatars.js?v=m162',
-  './js/supervisors.js?v=m162',
-  './js/charts.js?v=m162',
-  './js/select.js?v=m162',
-  './js/export.js?v=m162',
-  './js/app.js?v=m162',
+  './css/app.css?v=m261',
+  './js/config.js?v=m261',
+  './js/workers.js?v=m261',
+  './js/api.js?v=m261',
+  './js/icons.js?v=m261',
+  './js/avatars.js?v=m261',
+  './js/supervisors.js?v=m261',
+  './js/charts.js?v=m261',
+  './js/select.js?v=m261',
+  './js/export.js?v=m261',
+  './js/app.js?v=m261',
   './vendor/echarts.min.js',
   './vendor/jspdf.umd.min.js',
   './manifest.webmanifest',
@@ -21,7 +21,8 @@ const PRECACHE = [
   './assets/icon-512.png',
   './assets/apple-touch-icon.png',
   './assets/logo-qberries.png',
-  './assets/logo.png'
+  './assets/logo.png',
+  './assets/FONDO.jpg'
 ];
 
 self.addEventListener('install', (event) => {

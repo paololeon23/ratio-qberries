@@ -55,7 +55,9 @@ QB.workers = {
           dni,
           nombreCompleto: this.isJunkName(nom) ? '' : nom,
           cargo: w.cargo || '',
-          fechaIngreso: w.fechaIngreso || ''
+          fechaIngreso: w.fechaIngreso || '',
+          /* false = baja / no activo en padrón */
+          activo: w.activo !== false
         });
       }
       this.map = map;
@@ -91,7 +93,7 @@ QB.workers = {
     let activo = false;
 
     if (w && w.nombreCompleto) {
-      activo = true;
+      activo = w.activo !== false;
       nombreCompleto = w.nombreCompleto;
       const parts = nombreCompleto.split(/\s+/).filter(Boolean);
       if (parts.length >= 3) {

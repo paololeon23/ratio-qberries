@@ -215,6 +215,10 @@ QB.icons = {
     );
   },
 
+  checkCircle(size) {
+    return this.svg(`<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5 11 15l5.5-6"/>`, size);
+  },
+
   chevronRight(size) {
     return this.svg(`<path d="M9 6.5 15 12l-6 5.5"/>`, size, 2);
   },
@@ -258,6 +262,7 @@ QB.icons = {
       cloud: () => this.cloud(size),
       wifi: () => this.wifi(size),
       info: () => this.info(size),
+      checkCircle: () => this.checkCircle(size),
       chevronRight: () => this.chevronRight(size),
       chevronLeft: () => this.chevronLeft(size),
       close: () => this.close(size),

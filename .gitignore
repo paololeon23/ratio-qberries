@@ -1,5 +1,8 @@
 data/Produccion_Licapa_copy.xlsx
 data/.data-version.json
+data/*.backup*.json
+data/supervisores-lic.xlsx
+data/produccion_agg.json
 .DS_Store
 .netlify
 node_modules

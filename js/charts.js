@@ -96,7 +96,7 @@ QB.charts = {
 
   ensure(id) {
     const el = document.getElementById(id);
-    if (!el) return null;
+    if (!el || typeof echarts === 'undefined') return null;
     if (this.instances[id]) {
       this.instances[id].dispose();
     }
@@ -104,6 +104,28 @@ QB.charts = {
     const chart = echarts.init(el, null, { renderer: 'canvas', devicePixelRatio: dpr });
     this.instances[id] = chart;
     return chart;
+  },
+
+  /** Reutiliza instancia (no dispose) — ideal cuando el panel acaba de hacerse visible */
+  getOrCreate(id) {
+    const el = document.getElementById(id);
+    if (!el || typeof echarts === 'undefined') return null;
+    let chart = typeof echarts.getInstanceByDom === 'function' ? echarts.getInstanceByDom(el) : null;
+    if (!chart || chart.isDisposed()) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      chart = echarts.init(el, null, { renderer: 'canvas', devicePixelRatio: dpr });
+    }
+    this.instances[id] = chart;
+    return chart;
+  },
+
+  resetCompareLt40Zoom(chart, start, end, useZoom) {
+    if (!chart || chart.isDisposed()) return;
+    chart.resize();
+    if (!useZoom) return;
+    [0, 1].forEach((dataZoomIndex) => {
+      chart.dispatchAction({ type: 'dataZoom', dataZoomIndex, start, end });
+    });
   },
 
   isMobile() {
@@ -225,12 +247,14 @@ QB.charts = {
 
   grupoConJefe(g) {
     const base = this.shortGrupo(g);
-    const jefe = window.QB && QB.supervisors ? QB.supervisors.label(g) : '';
+    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const jefe = window.QB && QB.supervisors ? QB.supervisors.label(g, fecha) : '';
     return jefe ? base + ' · ' + jefe : base;
   },
 
   jefeDe(g) {
-    return window.QB && QB.supervisors ? QB.supervisors.label(g) : '';
+    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    return window.QB && QB.supervisors ? QB.supervisors.label(g, fecha) : '';
   },
 
   fmtK(n) {
@@ -660,8 +684,8 @@ QB.charts = {
       toolbox: this.toolboxMini(),
       series: [{
         type: 'gauge',
-        center: ['50%', mobile ? '54%' : '52%'],
-        radius: mobile ? '86%' : '90%',
+        center: ['50%', mobile ? '58%' : '55%'],
+        radius: mobile ? '78%' : '82%',
         min: 0,
         max,
         startAngle: 210,
@@ -684,14 +708,7 @@ QB.charts = {
         pointer: { length: '60%', width: 6, itemStyle: { color: '#142019' } },
         anchor: { show: true, size: 12, itemStyle: { color: zoneColor, borderWidth: 2, borderColor: '#fff' } },
         detail: {
-          valueAnimation: true,
-          formatter: (v) => Number(v).toFixed(1) + '\npromedio\n' + zoneText,
-          color: '#142019',
-          fontSize: mobile ? 14 : 16,
-          fontWeight: 700,
-          fontFamily: 'Outfit',
-          lineHeight: 20,
-          offsetCenter: [0, '72%']
+          show: false
         },
         title: { show: false },
         data: [{ value: avg, name: 'Promedio' }]
@@ -727,6 +744,8 @@ QB.charts = {
     valEl.textContent = avg ? avg.toFixed(1) : '—';
     if (zoneEl) {
       zoneEl.textContent = avg ? zone : 'Sin datos';
+      zoneEl.style.background = avg ? color + '22' : '';
+      zoneEl.style.borderColor = avg ? color + '55' : '';
       zoneEl.style.color = avg ? color : '#6b7280';
     }
   },
@@ -1575,12 +1594,13 @@ QB.charts = {
   /** —— Paneles del día · supervisores + lotes —— */
 
   buildSupervisorStats(porGrupo) {
+    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
     return (porGrupo || [])
       .map((g) => {
         const full =
-          (window.QB && QB.supervisors && QB.supervisors.fullLabel(g.grupo)) || '';
+          (window.QB && QB.supervisors && QB.supervisors.fullLabel(g.grupo, fecha)) || '';
         const short =
-          (window.QB && QB.supervisors && QB.supervisors.label(g.grupo)) ||
+          (window.QB && QB.supervisors && QB.supervisors.label(g.grupo, fecha)) ||
           this.shortGrupo(g.grupo);
         return {
           grupo: g.grupo,
@@ -1607,8 +1627,8 @@ QB.charts = {
     this.renderSupervisorAlerts(porGrupo, merged);
 
     // Resumen · orden fijo
-    this.renderTopLotes(rows);
-    this._insightTopLotes(rows);
+    this.renderTopLotes(rows, kpis);
+    this._insightTopLotes(rows, kpis);
 
     this.renderTopLic(porGrupo);
     this._insightTopLic(porGrupo);
@@ -1735,6 +1755,163 @@ QB.charts = {
   renderTopSupervisores(supervisores) {
     const top = [...(supervisores || [])].sort((a, b) => b.c - a.c).slice(0, 10);
     this._barHSupervisores('chartTopSupervisores', top, 'c', { unit: 'Jarras' });
+  },
+
+  /** Comparación · supervisores con más personas < 40 jarras */
+  renderCompareLt40Supervisores(items) {
+    if (typeof echarts === 'undefined') return;
+    const host = document.getElementById('chartCompareLt40Sup');
+    if (!host) return;
+    const self = this;
+    const mobile = this.isMobile();
+    const list = [...(items || [])].filter((s) => Number(s.n) > 0).sort((a, b) => b.n - a.n);
+    const top = list;
+    const zoomThreshold = mobile ? 7 : 10;
+    const useZoom = top.length > zoomThreshold;
+    const maxN = top.length ? Math.max(...top.map((s) => Number(s.n) || 0)) : 0;
+    const yMax = Math.max(5, Math.ceil((maxN * 1.22) / 5) * 5);
+    const visibleBars = useZoom ? zoomThreshold : Math.min(top.length, mobile ? 8 : top.length);
+    const chartH = mobile
+      ? Math.max(220, Math.min(useZoom ? 300 : 340, 68 + visibleBars * 24 + (useZoom ? 40 : 56)))
+      : Math.max(340, Math.min(580, 120 + top.length * 24));
+
+    host.style.width = '100%';
+    host.style.maxWidth = 'none';
+    host.style.minHeight = chartH + 'px';
+    host.style.height = chartH + 'px';
+
+    const chart = this.getOrCreate('chartCompareLt40Sup');
+    if (!chart) return;
+
+    if (!top.length) {
+      chart.clear();
+      chart.setOption({
+        title: {
+          text: 'Sin personas bajo 40 jarras',
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
+        }
+      });
+      chart.resize();
+      return;
+    }
+
+    const zoomEnd = useZoom ? Math.round((zoomThreshold / top.length) * 100) : 100;
+
+    chart.setOption({
+      title: { show: false },
+      tooltip: Object.assign(this.tipBase(), {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (p) => {
+          const s = top[p[0].dataIndex];
+          if (!s) return '';
+          return (
+            '<b>' +
+            s.nombre +
+            '</b><br/>' +
+            (s.lic ? 'LIC: ' + s.lic + '<br/>' : '') +
+            'Personas &lt; 40: <b>' +
+            s.n +
+            '</b>'
+          );
+        }
+      }),
+      grid: {
+        left: mobile ? 4 : 10,
+        right: mobile ? 4 : 10,
+        top: mobile ? 46 : 50,
+        bottom: useZoom ? (mobile ? 44 : 48) : mobile ? 62 : 58,
+        containLabel: true
+      },
+      toolbox: { show: false },
+      dataZoom: useZoom
+          ? [
+              {
+                type: 'inside',
+                xAxisIndex: 0,
+                start: 0,
+                end: zoomEnd,
+                startValue: 0,
+                zoomOnMouseWheel: true,
+                moveOnMouseMove: true,
+                filterMode: 'none'
+              },
+              {
+                type: 'slider',
+                xAxisIndex: 0,
+                start: 0,
+                end: zoomEnd,
+                startValue: 0,
+                height: mobile ? 16 : 14,
+                bottom: 4,
+                left: '2%',
+                right: '2%',
+                showDetail: false,
+                borderColor: '#fecdca',
+                fillerColor: 'rgba(228, 30, 38, 0.18)',
+                handleStyle: { color: '#e41e26', borderColor: '#fff', borderWidth: 2 },
+                filterMode: 'none'
+              }
+            ]
+          : [],
+      xAxis: {
+        type: 'category',
+        data: top.map((s) => s.short || s.nombre),
+        axisLabel: this._label({
+          fontSize: mobile ? 10 : 11,
+          fontWeight: 650,
+          color: '#1f2a30',
+          interval: 0,
+          rotate: mobile ? 35 : 25,
+          margin: 10
+        }),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#eef1f3' } }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Personas',
+        min: 0,
+        max: yMax,
+        minInterval: 1,
+        nameTextStyle: { color: '#912018', fontSize: 11, fontWeight: 700, padding: [0, 0, 6, 0] },
+        nameGap: 14,
+        axisLabel: this._numAxisLabel({ fontSize: mobile ? 10 : 11 }),
+        splitLine: { lineStyle: { color: '#fce8e6', type: 'dashed' } }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: top.map((s, i) => ({
+            value: s.n,
+            itemStyle: {
+              borderRadius: [10, 10, 0, 0],
+              color: self.barGrad(i === 0 ? '#e41e26' : '#f7941d', i === 0 ? '#ff8a80' : '#ffd08a', true)
+            }
+          })),
+          barMaxWidth: mobile ? 48 : 56,
+          barCategoryGap: mobile ? '28%' : '32%',
+          label: {
+            show: true,
+            position: 'top',
+            distance: 10,
+            overflow: 'none',
+            color: '#912018',
+            fontWeight: 800,
+            fontSize: mobile ? 11 : 12,
+            formatter: (p) => String(p.value)
+          }
+        }
+      ],
+      animationDuration: 750,
+      animationEasing: 'cubicOut'
+    }, true);
+    const resetView = () => this.resetCompareLt40Zoom(chart, 0, zoomEnd, useZoom);
+    resetView();
+    setTimeout(resetView, 80);
+    setTimeout(resetView, 220);
   },
 
   renderPromedioSupervisor(supervisores) {
@@ -1896,9 +2073,8 @@ QB.charts = {
     }, true);
   },
 
-  renderTopLotes(rows) {
-    const chart = this.ensure('chartTopLotes');
-    if (!chart) return;
+  /** Agrega jarras por lote desde filas o kpis.porLote (respaldo) */
+  _loteItems(rows, kpis, limit) {
     const by = {};
     for (const r of rows || []) {
       if (Array.isArray(r.lotes) && r.lotes.length) {
@@ -1910,10 +2086,22 @@ QB.charts = {
         by[r.lote] = (by[r.lote] || 0) + (Number(r.c) || 0);
       }
     }
-    const items = Object.entries(by)
+    if (!Object.keys(by).length && kpis && kpis.porLote && kpis.porLote.length) {
+      kpis.porLote.forEach((l) => {
+        const name = String(l.lote || '').trim() || '(sin lote)';
+        by[name] = (by[name] || 0) + (Number(l.c) || 0);
+      });
+    }
+    return Object.entries(by)
       .map(([lote, c]) => ({ lote, c: Math.round(c * 100) / 100 }))
       .sort((a, b) => b.c - a.c)
-      .slice(0, 12);
+      .slice(0, limit || 12);
+  },
+
+  renderTopLotes(rows, kpis) {
+    const chart = this.ensure('chartTopLotes');
+    if (!chart) return;
+    const items = this._loteItems(rows, kpis, 12);
     const self = this;
     const mobile = this.isMobile();
     if (!items.length) {
@@ -2042,20 +2230,10 @@ QB.charts = {
     );
   },
 
-  _insightTopLotes(rows) {
-    const by = {};
-    for (const r of rows || []) {
-      if (Array.isArray(r.lotes) && r.lotes.length) {
-        r.lotes.forEach((l) => {
-          by[l.lote] = (by[l.lote] || 0) + (l.c || 0);
-        });
-      } else if (r.lote) {
-        by[r.lote] = (by[r.lote] || 0) + (r.c || 0);
-      }
-    }
-    const list = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  _insightTopLotes(rows, kpis) {
+    const list = this._loteItems(rows, kpis, 50).map((r) => [r.lote, r.c]);
     if (!list.length) {
-      this.setInsight('insightTopLotes', 'Sin lotes.');
+      this.setInsight('insightTopLotes', 'Sin lotes · confirma columna Lote en el registro.');
       return;
     }
     this.setInsight(
@@ -2401,7 +2579,7 @@ QB.charts = {
     );
   },
 
-  /** Tarjetas alineadas · siempre 3 en Atención (Personal · Ritmo · Mejor) */
+  /** Tarjetas alineadas · siempre 3 en Atención (Mejor · Peor · Menos personal) · por jarras totales */
   renderSupervisorAlerts(stats, merged) {
     const host = document.getElementById('attnList');
     if (!host) return;
@@ -2417,26 +2595,35 @@ QB.charts = {
       return;
     }
 
-    const byPeopleAsc = [...withN].sort((a, b) => a.n - b.n || a.avg - b.avg);
-    const byAvgAsc = [...withN].sort((a, b) => a.avg - b.avg || a.n - b.n);
-    const byAvgDesc = [...withN].sort((a, b) => b.avg - a.avg || b.c - a.c);
+    const byPeopleAsc = [...withN].sort((a, b) => a.n - b.n || a.c - b.c);
+    const byJarrasAsc = [...withN].sort((a, b) => a.c - b.c || a.n - b.n);
+    const byJarrasDesc = [...withN].sort((a, b) => b.c - a.c || b.n - a.n);
 
-    const few = byPeopleAsc[0];
-    const topRhythm = byAvgDesc[0];
-    /* Ritmo: peor promedio distinto de Personal y de Mejor */
-    let lowRhythm = byAvgAsc.find(
-      (g) => g.grupo !== few.grupo && g.grupo !== topRhythm.grupo
-    );
-    if (!lowRhythm) {
-      lowRhythm = byAvgAsc.find((g) => g.grupo !== topRhythm.grupo) || byAvgAsc[0];
+    const best = byJarrasDesc[0];
+    let worst = byJarrasAsc[0];
+    if (worst && best && worst.grupo === best.grupo && byJarrasAsc.length > 1) {
+      worst = byJarrasAsc[1];
     }
+    let few =
+      byPeopleAsc.find((g) => g.grupo !== best.grupo && g.grupo !== worst.grupo) ||
+      byPeopleAsc.find((g) => g.grupo !== best.grupo) ||
+      byPeopleAsc[0];
 
-    const jefe = (g) => this.jefeDe(g) || 'Sin jefe';
+    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const jefe = (g) => {
+      if (!window.QB || !QB.supervisors) return 'Sin jefe';
+      return QB.supervisors.label(g, fecha) || 'Sin jefe';
+    };
+    const jefeFull = (g) => {
+      if (!window.QB || !QB.supervisors) return '';
+      return QB.supervisors.fullLabel(g, fecha) || '';
+    };
     const card = (kind, tag, row, action) => ({
       kind,
       tag,
       lic: this.shortGrupo(row.grupo),
       jefe: jefe(row.grupo),
+      jefeTitle: jefeFull(row.grupo),
       n: row.n,
       c: this.fmtK(row.c),
       avg: this.fmtK(row.avg),
@@ -2444,9 +2631,9 @@ QB.charts = {
     });
 
     const cards = [
-      card('warn', 'Personal', few, 'Sumar cosechadores'),
-      card('warn', 'Ritmo', lowRhythm, 'Revisar lote'),
-      card('ok', 'Mejor', topRhythm, 'Referencia del día')
+      card('ok', 'Mejor LIC', best, 'Referencia del día'),
+      card('warn', 'Peor LIC', worst, 'Revisar lote'),
+      card('warn', 'Menos personal', few, 'Sumar cosechadores')
     ];
 
     host.innerHTML = cards
@@ -2463,7 +2650,9 @@ QB.charts = {
           '<strong class="attn-lic">' +
           c.lic +
           '</strong>' +
-          '<span class="attn-jefe">Jefe · ' +
+          '<span class="attn-jefe" title="' +
+          (c.jefeTitle || c.jefe).replace(/"/g, '&quot;') +
+          '">Jefe · ' +
           c.jefe +
           '</span>' +
           '</div>' +

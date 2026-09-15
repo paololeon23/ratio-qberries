@@ -1,5 +1,10 @@
 /* Dashboard campo · Q Berries jarras */
 (() => {
+  /** Umbral “bajo rendimiento”: menos de N jarras */
+  const COMPARE_LT40 = 30;
+  /** Umbral alto: 58 jarras o más */
+  const COMPARE_GTE58 = 58;
+
   const state = {
     hojas: [],
     report: null,
@@ -28,6 +33,10 @@
     compareLt40Q: '',
     _compareDirty: true,
     _compareLoadedSig: '',
+    /** Ratios Avance: 'solo' | 'custom' | 'todas' */
+    ratioMode: 'solo',
+    ratioSelected: {},
+    _ratioChartToken: 0,
     grupoOpts: [],
     variedadOpts: [],
     _workersDirty: true,
@@ -94,6 +103,27 @@
     return info.fullLong || info.full;
   }
 
+  /** DD-MM-YYYY para leyenda de imágenes exportadas */
+  function fechaLegendDdMmYyyy(key) {
+    const info = fechaInfoFor(key);
+    const short = (info && info.short) || fmtFecha(key);
+    return String(short || '').replace(/\//g, '-') || String(key || '');
+  }
+
+  function fechaLegendSortKey(key) {
+    const k = String(key || '').trim();
+    const h = (state.hojas || []).find((x) => x.fecha === k);
+    const opt = (state.fechaOpts || []).find((o) => o.value === k);
+    const iso = (h && (h.fechaDisplay || h.fecha)) || (opt && opt.display) || k;
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + m[2] + m[3];
+    const dmy = String(iso).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) {
+      return dmy[3] + String(dmy[2]).padStart(2, '0') + String(dmy[1]).padStart(2, '0');
+    }
+    return k;
+  }
+
   function uniqueFechas(list) {
     const seen = new Set();
     const out = [];
@@ -133,6 +163,9 @@
     bind();
     updateConnBadge();
     await QB.workers.load();
+    if (QB.descartes && QB.descartes.load) {
+      await QB.descartes.load(true);
+    }
     if (QB.supervisors && QB.supervisors.enrichFromWorkers) {
       QB.supervisors.enrichFromWorkers();
     }
@@ -231,12 +264,146 @@
     const el = $('syncBanner');
     const t = $('syncBannerText');
     if (t && text) t.textContent = text;
-    if (el) el.hidden = false;
+    if (el) {
+      el.hidden = false;
+      el.setAttribute('aria-busy', 'true');
+    }
   }
 
   function hideSyncBanner() {
+    stopSyncProgress(true);
     const el = $('syncBanner');
-    if (el) el.hidden = true;
+    if (el) {
+      el.hidden = true;
+      el.classList.remove('is-progress');
+      el.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  const SYNC_PROGRESS_MSGS = [
+    'Conectando…',
+    'Descargando última fecha…',
+    'Procesando registros…',
+    'Armando informe…',
+    'Casi listo…'
+  ];
+
+  let _syncProg = {
+    timer: 0,
+    msgTimer: 0,
+    pct: 0,
+    msgIdx: 0,
+    active: false,
+    hideTimer: 0
+  };
+
+  function setSyncProgressUi(pct, text) {
+    const fill = $('syncProgressFill');
+    const pctEl = $('syncProgressPct');
+    const t = $('syncBannerText');
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    if (fill) fill.style.width = p + '%';
+    if (pctEl) pctEl.textContent = p + '%';
+    if (t && text) t.textContent = text;
+  }
+
+  function startSyncProgress(opts) {
+    opts = opts || {};
+    stopSyncProgress(true);
+    const el = $('syncBanner');
+    const bar = $('syncProgress');
+    if (!el) return;
+    el.hidden = false;
+    el.classList.add('is-progress');
+    el.setAttribute('aria-busy', 'true');
+    if (bar) bar.hidden = false;
+
+    _syncProg.active = true;
+    _syncProg.pct = 3;
+    _syncProg.msgIdx = 0;
+    setSyncProgressUi(
+      3,
+      opts.startText || SYNC_PROGRESS_MSGS[0] + ' Aún puedes usar la app.'
+    );
+
+    const tick = () => {
+      if (!_syncProg.active) return;
+      const cur = _syncProg.pct;
+      let step;
+      if (cur < 25) step = 6 + Math.random() * 5;
+      else if (cur < 55) step = 3.5 + Math.random() * 3;
+      else if (cur < 78) step = 1.6 + Math.random() * 1.4;
+      else step = 0.35 + Math.random() * 0.4;
+      _syncProg.pct = Math.min(90, cur + step);
+      const msg = SYNC_PROGRESS_MSGS[Math.min(_syncProg.msgIdx, SYNC_PROGRESS_MSGS.length - 1)];
+      setSyncProgressUi(_syncProg.pct, msg + ' Aún puedes usar la app.');
+      const delay = cur < 40 ? 90 : cur < 70 ? 140 : 200;
+      _syncProg.timer = window.setTimeout(tick, delay);
+    };
+
+    _syncProg.msgTimer = window.setInterval(() => {
+      if (!_syncProg.active) return;
+      if (_syncProg.msgIdx < SYNC_PROGRESS_MSGS.length - 1) _syncProg.msgIdx += 1;
+    }, 700);
+
+    _syncProg.timer = window.setTimeout(tick, 50);
+  }
+
+  function finishSyncProgress(doneText) {
+    if (_syncProg.hideTimer) {
+      clearTimeout(_syncProg.hideTimer);
+      _syncProg.hideTimer = 0;
+    }
+    _syncProg.active = false;
+    if (_syncProg.timer) clearTimeout(_syncProg.timer);
+    if (_syncProg.msgTimer) clearInterval(_syncProg.msgTimer);
+    _syncProg.timer = 0;
+    _syncProg.msgTimer = 0;
+    _syncProg.pct = 100;
+
+    const el = $('syncBanner');
+    const bar = $('syncProgress');
+    if (el) {
+      el.hidden = false;
+      el.classList.add('is-progress');
+      el.setAttribute('aria-busy', 'false');
+    }
+    if (bar) bar.hidden = false;
+    setSyncProgressUi(100, doneText || '100% · datos de la última fecha listos.');
+
+    _syncProg.hideTimer = window.setTimeout(() => {
+      const fill = $('syncProgressFill');
+      const pctEl = $('syncProgressPct');
+      if (bar) bar.hidden = true;
+      if (fill) fill.style.width = '0%';
+      if (pctEl) pctEl.textContent = '0%';
+      if (el) {
+        el.hidden = true;
+        el.classList.remove('is-progress');
+      }
+      _syncProg.pct = 0;
+      _syncProg.hideTimer = 0;
+    }, 320);
+  }
+
+  function stopSyncProgress(silent) {
+    _syncProg.active = false;
+    if (_syncProg.timer) clearTimeout(_syncProg.timer);
+    if (_syncProg.msgTimer) clearInterval(_syncProg.msgTimer);
+    if (_syncProg.hideTimer) clearTimeout(_syncProg.hideTimer);
+    _syncProg.timer = 0;
+    _syncProg.msgTimer = 0;
+    _syncProg.hideTimer = 0;
+    _syncProg.pct = 0;
+    const bar = $('syncProgress');
+    const fill = $('syncProgressFill');
+    const pctEl = $('syncProgressPct');
+    const el = $('syncBanner');
+    if (bar) bar.hidden = true;
+    if (fill) fill.style.width = '0%';
+    if (pctEl) pctEl.textContent = '0%';
+    if (el) el.classList.remove('is-progress');
+    if (!silent) hideSyncBanner();
   }
 
   function applyPack(pack, opts) {
@@ -269,6 +436,7 @@
         };
       });
     syncCompareFechaOpts();
+    syncRatioFechaOpts();
     state._compareDirty = true;
     state.rows = (pack.data || []).slice();
     state.merged = mergeByWorker(pack);
@@ -300,6 +468,64 @@
     }
   }
 
+  function positionFechaMenu() {
+    const menu = document.getElementById('fechaDdMenu');
+    const btn = document.getElementById('fechaDdBtn');
+    if (!menu || !btn || menu.hidden) return;
+    const r = btn.getBoundingClientRect();
+    const gap = 8;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 360;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 640;
+    /* Mismo ancho que el trigger (hasta Actualizado), sin tope chico */
+    const width = Math.min(Math.max(r.width, 260), vw - 16);
+    let left = r.left;
+    if (left + width > vw - 8) left = Math.max(8, vw - width - 8);
+    if (left < 8) left = 8;
+
+    menu.style.position = 'fixed';
+    menu.style.left = Math.round(left) + 'px';
+    menu.style.width = Math.round(width) + 'px';
+    menu.style.right = 'auto';
+    menu.style.maxWidth = Math.round(width) + 'px';
+    menu.style.minWidth = '0';
+    menu.style.zIndex = '5000';
+    menu.style.maxHeight = '';
+
+    menu.style.top = '0px';
+    menu.style.bottom = 'auto';
+    const mh = Math.min(menu.scrollHeight + 4, Math.min(vh * 0.7, 420));
+    const spaceBelow = vh - r.bottom - gap - 8;
+    const spaceAbove = r.top - gap - 8;
+    const openUp = spaceBelow < mh && spaceAbove > spaceBelow;
+
+    if (openUp) {
+      const h = Math.min(mh, Math.max(140, spaceAbove));
+      menu.style.top = 'auto';
+      menu.style.bottom = Math.round(vh - r.top + gap) + 'px';
+      menu.style.maxHeight = Math.round(h) + 'px';
+    } else {
+      const h = Math.min(mh, Math.max(140, spaceBelow));
+      menu.style.top = Math.round(r.bottom + gap) + 'px';
+      menu.style.bottom = 'auto';
+      menu.style.maxHeight = Math.round(h) + 'px';
+    }
+  }
+
+  function clearFechaMenuPos() {
+    const menu = document.getElementById('fechaDdMenu');
+    if (!menu) return;
+    menu.style.position = '';
+    menu.style.left = '';
+    menu.style.right = '';
+    menu.style.top = '';
+    menu.style.bottom = '';
+    menu.style.width = '';
+    menu.style.minWidth = '';
+    menu.style.maxWidth = '';
+    menu.style.maxHeight = '';
+    menu.style.zIndex = '';
+  }
+
   function closeFechaMenu() {
     const menu = document.getElementById('fechaDdMenu');
     const btn = document.getElementById('fechaDdBtn');
@@ -307,6 +533,7 @@
     if (menu) menu.hidden = true;
     if (btn) btn.setAttribute('aria-expanded', 'false');
     if (root) root.classList.remove('is-open');
+    clearFechaMenuPos();
   }
 
   function openFechaMenu() {
@@ -318,6 +545,8 @@
     btn.setAttribute('aria-expanded', 'true');
     if (root) root.classList.add('is-open');
     menu.scrollTop = 0;
+    positionFechaMenu();
+    requestAnimationFrame(positionFechaMenu);
   }
 
   function toggleFechaMenu() {
@@ -362,6 +591,21 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeFechaMenu();
     });
+
+    window.addEventListener(
+      'resize',
+      () => {
+        if (document.getElementById('fechaDd')?.classList.contains('is-open')) positionFechaMenu();
+      },
+      { passive: true }
+    );
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (document.getElementById('fechaDd')?.classList.contains('is-open')) positionFechaMenu();
+      },
+      { passive: true, capture: true }
+    );
   }
 
   function statTipRows(rows) {
@@ -384,8 +628,8 @@
     const second = people[1];
     const nPeople = people.length || k.totalTrabajadores || 0;
     const avg = k.promedioCajasPorTrabajador || (nPeople ? (k.totalCajas || 0) / nPeople : 0);
-    const lt40 = people.filter((p) => Number(p.c || 0) < 40).length;
-    const gt40 = people.filter((p) => Number(p.c || 0) > 40).length;
+    const lt40 = people.filter((p) => Number(p.c || 0) < COMPARE_LT40).length;
+    const gt40 = people.filter((p) => Number(p.c || 0) >= COMPARE_GTE58).length;
     const top5G = (k.porGrupo || []).slice(0, 5);
 
     if (kind === 'people') {
@@ -396,8 +640,8 @@
           { label: 'Personas con jarras', value: fmt(nPeople) },
           { label: 'Promedio jarras / persona', value: fmt(avg) },
           { label: 'Total jarras del día', value: fmt(k.totalCajas) },
-          { label: 'Menos de 40 jarras', value: fmt(lt40) + ' personas' },
-          { label: 'Más de 40 jarras', value: fmt(gt40) + ' personas' },
+          { label: 'Menos de ' + COMPARE_LT40 + ' jarras', value: fmt(lt40) + ' personas' },
+          { label: COMPARE_GTE58 + ' o más jarras', value: fmt(gt40) + ' personas' },
           { label: 'Filas registradas', value: fmt(k.totalFilas) }
         ],
         action: { tab: 'personas', label: 'Ver listado de personas' }
@@ -532,10 +776,11 @@
     };
 
     setBusy(true);
-    showSyncBanner('Cargando datos · ' + label + '…');
+    startSyncProgress({
+      startText: 'Cargando ' + label + '… Aún puedes usar la app.'
+    });
 
     const finishOk = (pack, fromCache, wantFecha) => {
-      hideSyncBanner();
       setBusy(false);
       if (wantFecha && pack.hoy && pack.hoy !== wantFecha) {
         QB.export.toast('Aviso: datos recibidos para otra fecha; recalculando…', 'warn');
@@ -543,6 +788,9 @@
       applyPack(pack, { requestedFecha: want });
       flashHero();
       const n = (pack.data && pack.data.length) || 0;
+      finishSyncProgress(
+        '100% · ' + label + ' · ' + fmt(n) + (fromCache ? ' (cache)' : ' registros.')
+      );
       const msg = fromCache
         ? 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas (cache)'
         : 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas';
@@ -550,10 +798,10 @@
     };
 
     const finishFail = (msg) => {
-      hideSyncBanner();
       setBusy(false);
       state.fecha = prev;
       renderHero(state.report || { kpis: {} });
+      finishSyncProgress(msg || 'No se pudo cambiar la fecha');
       QB.export.toast(msg || 'No se pudo cambiar la fecha', 'warn');
     };
 
@@ -608,6 +856,381 @@
     updateCompareMeta();
   }
 
+  function syncRatioFechaOpts() {
+    const known = {};
+    (state.fechaOpts || []).forEach((o) => {
+      known[o.value] = true;
+    });
+    Object.keys(state.ratioSelected || {}).forEach((f) => {
+      if (!known[f]) delete state.ratioSelected[f];
+    });
+    if (state.ratioMode === 'custom') {
+      const left = Object.keys(state.ratioSelected).filter((f) => state.ratioSelected[f]);
+      if (!left.length) {
+        state.ratioMode = 'solo';
+        state.ratioSelected = {};
+      }
+    }
+    renderRatioSheetBar();
+  }
+
+  function getRatioFechas() {
+    const opts = (state.fechaOpts || []).map((o) => o.value).filter(Boolean);
+    if (state.ratioMode === 'todas') return opts.slice();
+    if (state.ratioMode === 'custom') {
+      const sel = opts.filter((f) => state.ratioSelected[f]);
+      if (sel.length) return sel;
+    }
+    return state.fecha ? [state.fecha] : [];
+  }
+
+  function updateRatioSheetMeta() {
+    const meta = $('ratioSheetMeta');
+    if (!meta) return;
+    const fechas = getRatioFechas();
+    const total = (state.fechaOpts || []).length;
+    if (!fechas.length) {
+      meta.textContent = 'Elige al menos una fecha';
+      return;
+    }
+    const labels = fechas.map((f) => {
+      const info = fechaInfoFor(f);
+      return (info && info.short) || fechaLabelText(f);
+    });
+    if (state.ratioMode === 'solo' || fechas.length === 1) {
+      meta.textContent = 'Solo ' + (labels[0] || fechas[0]);
+      return;
+    }
+    if (state.ratioMode === 'todas' || fechas.length === total) {
+      meta.textContent = 'Todas · ' + fechas.length + ' fechas unidas';
+      return;
+    }
+    meta.textContent = fechas.length + ' de ' + total + ' · ' + labels.join(' · ');
+  }
+
+  function renderRatioSheetBar() {
+    const host = $('ratioSheetChips');
+    if (!host) return;
+    const opts = state.fechaOpts || [];
+    const active = new Set(getRatioFechas());
+    const btnSolo = $('btnRatioSolo');
+    const btnTodas = $('btnRatioTodas');
+    if (btnSolo) btnSolo.classList.toggle('is-active', state.ratioMode === 'solo');
+    if (btnTodas) btnTodas.classList.toggle('is-active', state.ratioMode === 'todas');
+
+    host.innerHTML = opts.length
+      ? opts
+          .map((o) => {
+            const info = fmtFechaClara(o.display || o.value);
+            const short = info.short || o.label;
+            const on = active.has(o.value);
+            return (
+              '<button type="button" class="ratio-sheet-chip' +
+              (on ? ' is-on' : ' is-off') +
+              '" data-ratio-fecha="' +
+              escapeAttr(o.value) +
+              '" title="' +
+              escapeAttr(o.label || short) +
+              '" aria-pressed="' +
+              (on ? 'true' : 'false') +
+              '">' +
+              '<span class="ratio-sheet-chip-label">' +
+              escapeHtml(short) +
+              '</span>' +
+              '</button>'
+            );
+          })
+          .join('')
+      : '<p class="ratio-sheet-empty">Sin fechas disponibles</p>';
+    updateRatioSheetMeta();
+  }
+
+  function setRatioMode(mode) {
+    const m = mode === 'todas' ? 'todas' : 'solo';
+    state.ratioMode = m;
+    state.ratioSelected = {};
+    renderRatioSheetBar();
+    renderRatioChart();
+  }
+
+  function toggleRatioFecha(fecha) {
+    const f = String(fecha || '').trim();
+    if (!f) return;
+    const opts = (state.fechaOpts || []).map((o) => o.value).filter(Boolean);
+    if (!opts.includes(f)) return;
+
+    if (state.ratioMode === 'solo') {
+      if (f === state.fecha) return;
+      state.ratioMode = 'custom';
+      state.ratioSelected = {};
+      if (state.fecha) state.ratioSelected[state.fecha] = true;
+      state.ratioSelected[f] = true;
+    } else if (state.ratioMode === 'todas') {
+      state.ratioMode = 'custom';
+      state.ratioSelected = {};
+      opts.forEach((x) => {
+        if (x !== f) state.ratioSelected[x] = true;
+      });
+    } else if (state.ratioSelected[f]) {
+      delete state.ratioSelected[f];
+      const left = opts.filter((x) => state.ratioSelected[x]);
+      if (!left.length) {
+        state.ratioMode = 'solo';
+        state.ratioSelected = {};
+      } else if (left.length === 1 && left[0] === state.fecha) {
+        state.ratioMode = 'solo';
+        state.ratioSelected = {};
+      }
+    } else {
+      state.ratioSelected[f] = true;
+      if (opts.every((x) => state.ratioSelected[x])) {
+        state.ratioMode = 'todas';
+        state.ratioSelected = {};
+      }
+    }
+    renderRatioSheetBar();
+    renderRatioChart();
+  }
+
+  async function ensureRatioPacks(fechas) {
+    const jobs = [];
+    (fechas || []).forEach((fecha) => {
+      if (fecha === state.fecha && state.report && (state.report.data || []).length) {
+        state.comparePacks[fecha] = state.report;
+        return;
+      }
+      const cached = state.comparePacks[fecha];
+      const cachedOk =
+        cached &&
+        (cached.data || []).length &&
+        (!cached.hoy || String(cached.hoy) === String(fecha));
+      if (cachedOk) return;
+      jobs.push(
+        QB.api.cargarTodo({ fecha: fecha, allowCacheFallback: true }).then((p) => {
+          if (!p || !(p.data || []).length) return;
+          /* Guardar siempre bajo la fecha pedida */
+          state.comparePacks[fecha] = p;
+          if (p.hoy && String(p.hoy) !== String(fecha)) {
+            state.comparePacks[p.hoy] = p;
+          }
+        })
+      );
+    });
+    if (jobs.length) await Promise.all(jobs);
+  }
+
+  function packForRatioFecha(f) {
+    if (f === state.fecha && state.report && (state.report.data || []).length) {
+      return state.report;
+    }
+    const pack = state.comparePacks[f];
+    if (!pack || !(pack.data || []).length) return null;
+    if (pack.hoy && String(pack.hoy) !== String(f)) {
+      /* Pack cacheado con otra hoja: no usar para no mezclar días */
+      return null;
+    }
+    return pack;
+  }
+
+  function buildRatioRows(fechas) {
+    const out = [];
+    (fechas || []).forEach((f) => {
+      const pack = packForRatioFecha(f);
+      if (!pack) return;
+      peopleOf(pack).forEach((r) => {
+        if (Number(r.c) > 0) out.push(r);
+      });
+    });
+    return out;
+  }
+
+  async function renderRatioChart(opts) {
+    const charts = QB.charts;
+    if (!charts || typeof charts.renderDist !== 'function') return;
+    const fechas = getRatioFechas();
+    const token = ++state._ratioChartToken;
+    const meta = $('ratioSheetMeta');
+    if (meta && fechas.length > 1) {
+      meta.textContent = 'Cargando ' + fechas.length + ' fechas…';
+    }
+    try {
+      await ensureRatioPacks(fechas);
+    } catch (_) {
+      /* ignore; chart shows what we have */
+    }
+    if (token !== state._ratioChartToken) return;
+    const rows = buildRatioRows(fechas);
+    charts.renderDist(rows, opts);
+    charts._insightDist(rows, { nFechas: fechas.length });
+    if (typeof charts.renderDistGt70 === 'function') {
+      charts.renderDistGt70(rows, opts);
+      charts._insightDistGt70(rows, { nFechas: fechas.length });
+    }
+    updateRatioSheetMeta();
+    requestAnimationFrame(() => {
+      if (charts.resizeAll) charts.resizeAll();
+    });
+  }
+
+  function collectRatioPeople(fechas, pred) {
+    const people = [];
+    const byFecha = {};
+    (fechas || []).forEach((f) => {
+      const pack = packForRatioFecha(f);
+      if (!pack) {
+        byFecha[f] = 0;
+        return;
+      }
+      let n = 0;
+      peopleOf(pack).forEach((r) => {
+        const c = Number(r.c || 0);
+        if (!pred(c, r)) return;
+        n += 1;
+        people.push({
+          ci: r.ci,
+          nombre: r.nombre,
+          apellido: r.apellido,
+          nombreCompleto: r.nombreCompleto,
+          grupo: r.grupo,
+          c,
+          fecha: f,
+          fechaSort: fechaLegendSortKey(f),
+          fechaLabel: fechaLegendDdMmYyyy(f)
+        });
+      });
+      byFecha[f] = n;
+    });
+    people.sort((a, b) => {
+      const ka = String(a.fechaSort || '');
+      const kb = String(b.fechaSort || '');
+      if (ka !== kb) return ka.localeCompare(kb);
+      return (Number(b.c) || 0) - (Number(a.c) || 0);
+    });
+    return { people, byFecha };
+  }
+
+  async function exportRatioExcel(btn) {
+    if (!QB.export || typeof QB.export.excelRatioDist !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const fechas = getRatioFechas();
+    if (!fechas.length) {
+      QB.export.toast('Elige al menos una fecha', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      await ensureRatioPacks(fechas);
+      const missing = fechas.filter((f) => !packForRatioFecha(f));
+      if (missing.length) {
+        QB.export.toast(
+          'Faltan datos de ' + missing.length + ' fecha(s). Reintenta.',
+          'warn'
+        );
+      }
+      const { people } = collectRatioPeople(fechas, (c) => c > 0);
+      QB.export.excelRatioDist({ people, fechas });
+    } catch (_) {
+      QB.export.toast('No se pudo armar el Excel', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
+  }
+
+  async function exportRatioImage(btn, chartId) {
+    if (!QB.export || typeof QB.export.ratioChartImage !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const id = chartId || 'chartDist';
+    const fechas = getRatioFechas();
+    if (!fechas.length) {
+      QB.export.toast('Elige al menos una fecha', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      await ensureRatioPacks(fechas);
+      await renderRatioChart({ animate: false });
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setTimeout(resolve, 60));
+        });
+      });
+      const labels = [...fechas]
+        .sort((a, b) => fechaLegendSortKey(a).localeCompare(fechaLegendSortKey(b)))
+        .map((f) => fechaLegendDdMmYyyy(f));
+      await QB.export.ratioChartImage({
+        chartId: id,
+        fechaLabels: labels,
+        title:
+          id === 'chartDistGt70'
+            ? 'Q Berries · Más de 70 jarras'
+            : 'Q Berries · Ratios Cosecha / Diario',
+        fileTag: id === 'chartDistGt70' ? 'mas_de_70' : 'ratios_cosecha'
+      });
+    } catch (_) {
+      QB.export.toast('No se pudo generar la imagen', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
+  }
+
+  async function exportRatioExcelGt70(btn) {
+    if (!QB.export || typeof QB.export.excelRatioGt70 !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const fechas = getRatioFechas();
+    if (!fechas.length) {
+      QB.export.toast('Elige al menos una fecha', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      await ensureRatioPacks(fechas);
+      const missing = fechas.filter((f) => !packForRatioFecha(f));
+      if (missing.length) {
+        QB.export.toast(
+          'Faltan datos de ' +
+            missing.map((f) => fechaLegendDdMmYyyy(f)).join(' / ') +
+            '. Reintenta.',
+          'warn'
+        );
+      }
+      const { people, byFecha } = collectRatioPeople(fechas, (c) => c > 70);
+      const detail = fechas
+        .slice()
+        .sort((a, b) => fechaLegendSortKey(a).localeCompare(fechaLegendSortKey(b)))
+        .map((f) => fechaLegendDdMmYyyy(f) + ': ' + (byFecha[f] || 0))
+        .join(' · ');
+      QB.export.excelRatioGt70({ people, fechas, detail: detail });
+    } catch (_) {
+      QB.export.toast('No se pudo armar el Excel', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
+  }
+
   function updateCompareMeta() {
     const meta = $('compareMeta');
     if (!meta) return;
@@ -621,7 +1244,10 @@
       meta.textContent = `Incluye al menos 2 hojas (${active.length} de ${total})`;
       return;
     }
-    const labels = active.map((f) => fechaLabelText(f));
+    const labels = active.map((f) => {
+      const info = fechaInfoFor(f);
+      return (info && info.short) || fechaLabelText(f);
+    });
     meta.textContent =
       active.length === total
         ? `${active.length} hojas · ${labels.join(' · ')}`
@@ -645,8 +1271,8 @@
       ? active
           .map((o) => {
             const info = fmtFechaClara(o.display || o.value);
-            const short = info.line || info.short || o.label;
-            return `<span class="compare-sheet-chip is-on" role="listitem" data-fecha="${escapeAttr(o.value)}" title="${escapeAttr(o.label || short)}">
+            const short = info.short || o.label;
+            return `<span class="compare-sheet-chip is-on" role="listitem" data-fecha="${escapeAttr(o.value)}" title="${escapeAttr(o.label || info.fullLong || short)}">
               <span class="compare-sheet-chip-label">${escapeHtml(short)}</span>
               <button type="button" class="compare-sheet-x" data-action="exclude" data-fecha="${escapeAttr(o.value)}" aria-label="Quitar ${escapeAttr(short)} de la comparación" title="No comparar esta hoja">×</button>
             </span>`;
@@ -660,7 +1286,7 @@
         exHost.innerHTML = excluded
           .map((o) => {
             const info = fmtFechaClara(o.display || o.value);
-            const short = info.line || info.short || o.label;
+            const short = info.short || o.label;
             return `<button type="button" class="compare-sheet-chip is-off" role="listitem" data-action="include" data-fecha="${escapeAttr(o.value)}" title="Volver a incluir ${escapeAttr(short)}">
               <span class="compare-sheet-chip-label">${escapeHtml(short)}</span>
               <span class="compare-sheet-plus" aria-hidden="true">+</span>
@@ -717,8 +1343,6 @@
     };
   }
 
-  const COMPARE_LT40 = 40;
-
   function loteTotals(pack) {
     const by = {};
     const rows = (pack && pack.data) || [];
@@ -762,8 +1386,8 @@
     return Math.round((sum / worked.length) * 10) / 10;
   }
 
-  function comparePersonCondicion(promedio) {
-    return Number(promedio) < COMPARE_LT40 ? 'Bajo' : 'Regular';
+  function comparePersonCondicion(ltDays) {
+    return Number(ltDays) > 0 ? 'Bajo (día)' : 'Regular';
   }
 
   function buildMultiCompareModel(packsByFecha, fechas) {
@@ -876,7 +1500,8 @@
         const supervisor = p.supervisorsByDay[refIdx] || supervisorFullLabel(refGrupo, refFecha) || '—';
         const supervisorShort = supervisorShortLabel(refGrupo, refFecha) || supervisor;
         const promedio = comparePersonPromedio(p.values);
-        const condicion = comparePersonCondicion(promedio);
+        /* Bajo = tuvo al menos un día < 30 jarras (no se usa el promedio) */
+        const condicion = comparePersonCondicion(ltDays);
         return {
           ...p,
           ltDays,
@@ -891,7 +1516,8 @@
         };
       })
       .filter((p) => p.ltDays > 0)
-      .sort((a, b) => a.promedio - b.promedio || a.min - b.min || a.sum - b.sum);
+      .filter((p) => !(QB.supervisors && QB.supervisors.isSupervisorDni && QB.supervisors.isSupervisorDni(p.ci)))
+      .sort((a, b) => b.ltDays - a.ltDays || a.min - b.min || a.sum - b.sum);
 
     const lt40BySupervisor = buildCompareLt40SupervisorStats(lt40People);
 
@@ -958,6 +1584,9 @@
     }
 
     try {
+      if (QB.descartes && QB.descartes.load) {
+        await QB.descartes.load(true);
+      }
       const jobs = [];
       active.forEach((fecha) => {
         const cached = state.comparePacks[fecha];
@@ -1021,7 +1650,7 @@
         ${days
           .map(
             (d) =>
-              `<button type="button" class="btn btn-excel btn-sm" data-export-compare="day" data-fecha="${escapeAttr(d.fecha)}" title="Menos de 40 jarras · ${escapeAttr(d.label)}"><span class="export-btn-long">Excel ${escapeHtml(d.short)}</span><span class="export-btn-short">${escapeHtml(d.short)}</span></button>`
+              `<button type="button" class="btn btn-excel btn-sm" data-export-compare="day" data-fecha="${escapeAttr(d.fecha)}" title="menos de 30 jarras · ${escapeAttr(d.label)}"><span class="export-btn-long">Excel ${escapeHtml(d.short)}</span><span class="export-btn-short">${escapeHtml(d.short)}</span></button>`
           )
           .join('')}
         <button type="button" class="btn btn-excel btn-sm is-high" data-export-compare="all" title="Excel con todas las hojas y supervisores">
@@ -1038,7 +1667,7 @@
       { key: 'nPeople', label: 'Cosechadores' },
       { key: 'nGrupos', label: 'Grupos LIC' },
       { key: 'avg', label: 'Prom. jarras/persona' },
-      { key: 'lt40Count', label: 'Personas < 40 jarras', alert: true }
+      { key: 'lt40Count', label: 'Personas < 30 jarras', alert: true }
     ];
     return `<div class="compare-summary-mobile">${(days || [])
       .map(
@@ -1089,7 +1718,13 @@
         QB.export.toast('Sin datos para esa hoja', 'warn');
         return;
       }
-      const people = mergeByWorker(pack).filter((r) => Number(r.c || 0) < COMPARE_LT40);
+      const people = mergeByWorker(pack).filter((r) => {
+        if (Number(r.c || 0) >= COMPARE_LT40) return false;
+        if (QB.supervisors && QB.supervisors.isSupervisorDni && QB.supervisors.isSupervisorDni(r.ci)) {
+          return false;
+        }
+        return true;
+      });
       QB.export.excelPeopleByJarras({
         mode: 'lt40',
         people,
@@ -1107,16 +1742,10 @@
     }
   }
 
-  function renderComparePromedioCell(promedio) {
-    const n = Number(promedio) || 0;
-    const cls = n < COMPARE_LT40 ? 'num compare-day-col is-lt40' : 'num compare-day-col';
+  function renderCompareLtDaysCell(ltDays) {
+    const n = Number(ltDays) || 0;
+    const cls = n > 0 ? 'num compare-day-col is-lt40' : 'num compare-day-col';
     return `<td class="${cls}">${fmt(n)}</td>`;
-  }
-
-  function renderCompareCondicionCell(condicion) {
-    const c = condicion === 'Regular' ? 'Regular' : 'Bajo';
-    const cls = c === 'Bajo' ? 'compare-cond compare-day-col is-bajo' : 'compare-cond compare-day-col is-regular';
-    return `<td class="${cls}">${escapeHtml(c)}</td>`;
   }
 
   function renderCompareJarCell(v) {
@@ -1142,7 +1771,7 @@
   function renderCompareLt40Row(p) {
     return `<tr><td>${escapeHtml(p.nombre)}</td><td>${escapeHtml(p.ci)}</td><td>${escapeHtml(p.grupo)}</td><td title="${escapeAttr(p.supervisor)}">${escapeHtml(p.supervisorShort || p.supervisor)}</td>${p.values
       .map((v) => renderCompareJarCell(v))
-      .join('')}${renderComparePromedioCell(p.promedio)}${renderCompareCondicionCell(p.condicion)}</tr>`;
+      .join('')}${renderCompareLtDaysCell(p.ltDays)}</tr>`;
   }
 
   function renderCompareLt40MobileCards(people, q) {
@@ -1150,7 +1779,7 @@
     if (!people.length) {
       const msg = q
         ? `Sin resultados para “${escapeHtml(q)}”`
-        : 'Ninguna persona con menos de 40 jarras en las hojas seleccionadas.';
+        : 'Ninguna persona con menos de 30 jarras en las hojas seleccionadas.';
       return `<p class="compare-empty compare-lt40-mobile-empty">${msg}</p>`;
     }
     return people
@@ -1167,8 +1796,7 @@
             </div>`;
           })
           .join('');
-        const promCls = Number(p.promedio) < COMPARE_LT40 ? 'is-lt40' : '';
-        const condCls = p.condicion === 'Regular' ? 'is-regular' : 'is-bajo';
+        const promCls = Number(p.ltDays) > 0 ? 'is-lt40' : '';
         return `<article class="compare-lt40-card">
           <header class="compare-lt40-card-head">
             <strong class="compare-lt40-card-name">${escapeHtml(p.nombre)}</strong>
@@ -1178,12 +1806,8 @@
           <div class="compare-lt40-card-dates">${dayStats}</div>
           <div class="compare-lt40-card-foot">
             <div class="compare-lt40-stat ${promCls}">
-              <span class="compare-lt40-stat-label">Promedio</span>
-              <strong class="compare-lt40-stat-val">${fmt(p.promedio)}</strong>
-            </div>
-            <div class="compare-lt40-stat compare-lt40-cond ${condCls}">
-              <span class="compare-lt40-stat-label">Condición</span>
-              <strong class="compare-lt40-stat-val">${escapeHtml(p.condicion)}</strong>
+              <span class="compare-lt40-stat-label">Días &lt;30</span>
+              <strong class="compare-lt40-stat-val">${fmt(p.ltDays)}</strong>
             </div>
           </div>
         </article>`;
@@ -1195,15 +1819,15 @@
     if (!people.length) {
       const msg = q
         ? `Sin resultados para “${escapeHtml(q)}”`
-        : 'Ninguna persona con menos de 40 jarras en las hojas seleccionadas.';
-      const cols = 4 + (state._compareLast?.model?.days?.length || 0) + 2;
+        : 'Ninguna persona con menos de 30 jarras en las hojas seleccionadas.';
+      const cols = 4 + (state._compareLast?.model?.days?.length || 0) + 1;
       return `<tr><td colspan="${cols}" class="compare-empty-row">${msg}</td></tr>`;
     }
     return people.map((p) => renderCompareLt40Row(p)).join('');
   }
 
   function compareLt40HintText(total, shown, q) {
-    const base = 'en rojo = menos de 40 jarras ese día · supervisor según su LIC';
+    const base = 'en rojo = menos de 30 jarras ese día · supervisor según su LIC';
     if (q && shown !== total) {
       return `${fmt(shown)} de ${fmt(total)} personas · ${base}`;
     }
@@ -1253,8 +1877,8 @@
   }
 
   function renderCompareLt40SupervisorChartBlock() {
-    return `<article class="compare-card tone-lt40-chart" aria-label="Supervisores con más personas bajo 40 jarras">
-          <h3>Supervisores con más personas &lt; 40 jarras</h3>
+    return `<article class="compare-card tone-lt40-chart" aria-label="Supervisores con más personas bajo 30 jarras">
+          <h3>Supervisores con más personas &lt; 34 jarras</h3>
           <p class="compare-hint compare-lt40-chart-hint">Quién concentra más cosechadores con bajo rendimiento en las hojas comparadas</p>
           <div class="compare-chart-wrap compare-chart-wrap--full">
             <div id="chartCompareLt40Sup" class="compare-chart compare-chart--full" role="img" aria-label="Gráfico de barras por supervisor"></div>
@@ -1283,6 +1907,90 @@
     });
   }
 
+  function buildCompareDescarteModel(fechas) {
+    const list = sortCompareFechas(fechas || []);
+    if (!QB.descartes || !list.length) return null;
+    const cmp = QB.descartes.compareRows(list);
+    if (!cmp.rows.length) return null;
+    const dayLabels = list.map((f) => {
+      const labels = compareDayLabels(f);
+      return { fecha: f, short: labels.short || f, label: labels.label || f };
+    });
+    return {
+      days: dayLabels,
+      rows: cmp.rows,
+      totals: cmp.totals
+    };
+  }
+
+  function renderCompareDescarteHtml(descarteModel) {
+    if (!descarteModel || !descarteModel.rows.length) {
+      return `<article class="compare-card tone-descarte">
+        <h3>Jarras de descarte por supervisor</h3>
+        <p class="compare-empty">Sin datos de descarte para las hojas seleccionadas.</p>
+      </article>`;
+    }
+    const { days, rows, totals } = descarteModel;
+    const showDelta = days.length === 2;
+    return `<article class="compare-card tone-descarte">
+      <h3>Jarras de descarte por supervisor</h3>
+      <p class="compare-hint">Quién tuvo descarte en cada hoja · suma al pie</p>
+      <div class="compare-table-wrap compare-table-wrap--wide">
+        <table class="compare-table compare-table--multi compare-table--descarte">
+          <thead>
+            <tr>
+              <th scope="col">LIC</th>
+              <th scope="col">Supervisor</th>
+              ${renderCompareDayHeads(days)}
+              ${showDelta ? '<th scope="col" class="compare-day-col">Δ</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map((row) => {
+                const delta = showDelta ? (Number(row.values[1]) || 0) - (Number(row.values[0]) || 0) : 0;
+                const deltaCls =
+                  delta > 0 ? 'num compare-day-col is-up' : delta < 0 ? 'num compare-day-col is-down' : 'num compare-day-col';
+                const deltaTxt =
+                  delta > 0 ? '+' + fmt(delta) : delta < 0 ? fmt(delta) : '0';
+                return `<tr>
+                  <td>${escapeHtml(row.lic)}</td>
+                  <td>${escapeHtml(row.nombre)}</td>
+                  ${row.values
+                    .map((v) => {
+                      const n = Number(v) || 0;
+                      const cls = n > 0 ? 'num compare-day-col is-descarte' : 'num compare-day-col';
+                      return `<td class="${cls}">${fmt(n)}</td>`;
+                    })
+                    .join('')}
+                  ${showDelta ? `<td class="${deltaCls}">${deltaTxt}</td>` : ''}
+                </tr>`;
+              })
+              .join('')}
+            <tr class="compare-row-total">
+              <th scope="row">TOTAL</th>
+              <td>Suma · ${rows.length} supervisores</td>
+              ${totals
+                .map((t) => `<td class="num compare-day-col is-descarte"><strong>${fmt(t)}</strong></td>`)
+                .join('')}
+              ${
+                showDelta
+                  ? (() => {
+                      const d = (Number(totals[1]) || 0) - (Number(totals[0]) || 0);
+                      const cls =
+                        d > 0 ? 'num compare-day-col is-up' : d < 0 ? 'num compare-day-col is-down' : 'num compare-day-col';
+                      const txt = d > 0 ? '+' + fmt(d) : fmt(d);
+                      return `<td class="${cls}"><strong>${txt}</strong></td>`;
+                    })()
+                  : ''
+              }
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>`;
+  }
+
   function renderCompareContent(packsByFecha, activeFechas) {
     const el = $('compareContent');
     if (!el) return;
@@ -1292,7 +2000,8 @@
       if (!packs[f] && state.comparePacks[f]) packs[f] = state.comparePacks[f];
     });
     const model = buildMultiCompareModel(packs, fechas);
-    state._compareLast = { packs, fechas, model };
+    const descarteModel = buildCompareDescarteModel(fechas);
+    state._compareLast = { packs, fechas, model, descarteModel };
     updateCompareMeta();
 
     const summaryHtml = `<article class="compare-card tone-summary">
@@ -1323,7 +2032,7 @@
               ${model.days.map((d) => `<td class="num compare-day-col">${fmt(d.avg)}</td>`).join('')}
             </tr>
             <tr class="compare-row-alert">
-              <th scope="row">Personas con menos de 40 jarras</th>
+              <th scope="row">Personas con menos de 30 jarras</th>
               ${model.days.map((d) => `<td class="num compare-day-col is-lt40">${fmt(d.lt40Count)}</td>`).join('')}
             </tr>
           </tbody>
@@ -1338,7 +2047,7 @@
       ? `<article class="compare-card tone-people-lt40">
           <div class="compare-card-head-row">
             <div>
-              <h3>Personas con menos de 40 jarras</h3>
+              <h3>Personas con menos de 30 jarras</h3>
               <p class="compare-hint" id="compareLt40Hint">${compareLt40HintText(lt40All.length, lt40Shown.length, state.compareLt40Q)}</p>
             </div>
           </div>
@@ -1366,8 +2075,7 @@
                   <th scope="col">LIC</th>
                   <th scope="col">Supervisor</th>
                   ${renderCompareDayHeads(model.days)}
-                  <th scope="col" class="compare-day-col">Promedio</th>
-                  <th scope="col" class="compare-day-col">Condición</th>
+                  <th scope="col" class="compare-day-col">Días &lt;30</th>
                 </tr>
               </thead>
               <tbody id="compareLt40Tbody">
@@ -1380,8 +2088,8 @@
           </div>
         </article>`
       : `<article class="compare-card tone-people-lt40">
-          <h3>Personas con menos de 40 jarras</h3>
-          <p class="compare-empty">Ninguna persona con menos de 40 jarras en las hojas seleccionadas.</p>
+          <h3>Personas con menos de 30 jarras</h3>
+          <p class="compare-empty">Ninguna persona con menos de 30 jarras en las hojas seleccionadas.</p>
           ${renderCompareExportBar(model.days)}
         </article>`;
 
@@ -1463,7 +2171,9 @@
           </div>`
         : '';
 
-    el.innerHTML = `<div class="compare-grid">${summaryHtml}${lt40Html}${lt40ChartHtml}${licHtml}${lotHtml}</div>`;
+    const descarteHtml = renderCompareDescarteHtml(descarteModel);
+
+    el.innerHTML = `<div class="compare-grid">${summaryHtml}${descarteHtml}${lt40Html}${lt40ChartHtml}${licHtml}${lotHtml}</div>`;
     bindCompareLt40Search();
     const compareLt40Ico = $('compareLt40SearchIco');
     if (compareLt40Ico && QB.icons) compareLt40Ico.innerHTML = QB.icons.search(18);
@@ -1488,6 +2198,9 @@
     if (state.tab === 'comparacion' && state._compareDirty) {
       renderComparePanel(true);
     }
+    if (state.tab === 'avance') {
+      renderRatioSheetBar();
+    }
   }
 
   function scheduleCharts(pack) {
@@ -1495,7 +2208,7 @@
     state._chartsTimer = setTimeout(() => {
       state._chartsTimer = 0;
       renderCharts(pack);
-    }, 40);
+    }, 16);
   }
 
   function updateLiveBadge() {
@@ -1565,6 +2278,12 @@
     if (workersIco) workersIco.innerHTML = QB.icons.search(18);
     const gruposIco = $('gruposSearchIco');
     if (gruposIco) gruposIco.innerHTML = QB.icons.search(18);
+    const pdfExportBtn = $('btnExportReportesPdf');
+    if (pdfExportBtn && QB.icons) pdfExportBtn.innerHTML = QB.icons.pdf(18);
+    const imgExportBtn = $('btnExportReportesImg');
+    if (imgExportBtn && QB.icons) imgExportBtn.innerHTML = QB.icons.image(18);
+    const cuadroExportBtn = $('btnExportCuadrosLic');
+    if (cuadroExportBtn && QB.icons) cuadroExportBtn.innerHTML = QB.icons.bolt(18);
   }
 
   function isAppInstalled() {
@@ -1736,6 +2455,10 @@
         paintCompareLt40SupervisorChart(state._compareLast.model.lt40BySupervisor);
       }
     }
+    if (state.tab === 'avance') {
+      renderRatioSheetBar();
+      renderRatioChart();
+    }
     requestAnimationFrame(() => {
       if (QB.charts && QB.charts.resizeAll) QB.charts.resizeAll();
       if (state.tab === 'comparacion' && state._compareLast?.model?.lt40BySupervisor) {
@@ -1774,6 +2497,36 @@
           setCompareExcluded(fecha, false);
           runCompare(true);
         }
+      });
+    }
+
+    const ratioBar = $('ratioSheetBar');
+    if (ratioBar && !ratioBar.dataset.bound) {
+      ratioBar.dataset.bound = '1';
+      const btnSolo = $('btnRatioSolo');
+      const btnTodas = $('btnRatioTodas');
+      const btnExcelRatio = $('btnExcelRatio');
+      const btnExcelRatioGt70 = $('btnExcelRatioGt70');
+      const btnImgRatio = $('btnImgRatio');
+      if (btnSolo) btnSolo.addEventListener('click', () => setRatioMode('solo'));
+      if (btnTodas) btnTodas.addEventListener('click', () => setRatioMode('todas'));
+      if (btnExcelRatio) {
+        btnExcelRatio.addEventListener('click', () => exportRatioExcel(btnExcelRatio));
+      }
+      if (btnExcelRatioGt70) {
+        btnExcelRatioGt70.addEventListener('click', () => exportRatioExcelGt70(btnExcelRatioGt70));
+      }
+      if (btnImgRatio) {
+        btnImgRatio.addEventListener('click', () => exportRatioImage(btnImgRatio, 'chartDist'));
+      }
+      const btnImgRatioGt70 = $('btnImgRatioGt70');
+      if (btnImgRatioGt70) {
+        btnImgRatioGt70.addEventListener('click', () => exportRatioImage(btnImgRatioGt70, 'chartDistGt70'));
+      }
+      ratioBar.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-ratio-fecha]');
+        if (!chip) return;
+        toggleRatioFecha(chip.getAttribute('data-ratio-fecha'));
       });
     }
 
@@ -1817,7 +2570,7 @@
       btn.addEventListener('click', () => {
         const people = peopleOf(state.report).filter((r) => {
           const c = Number(r.c || 0);
-          return mode === 'gt40' ? c > 40 : c < 40;
+          return mode === 'gt40' ? c >= COMPARE_GTE58 : c < COMPARE_LT40;
         });
         const fechaInfo = state.fecha ? fechaInfoFor(state.fecha) : null;
         QB.export.excelPeopleByJarras({
@@ -1831,6 +2584,21 @@
     bindExcel('btnExcelLt40', 'lt40');
     bindExcel('btnExcelGt40', 'gt40');
 
+    const btnExportReportes = $('btnExportReportesPdf');
+    if (btnExportReportes) {
+      btnExportReportes.disabled = false;
+      btnExportReportes.classList.remove('is-busy');
+      btnExportReportes.addEventListener('click', () => exportAllGrupoReportesPdf(btnExportReportes));
+    }
+    const btnExportImgs = $('btnExportReportesImg');
+    if (btnExportImgs) {
+      btnExportImgs.addEventListener('click', () => exportAllGrupoReportesImg(btnExportImgs));
+    }
+    const btnExportCuadros = $('btnExportCuadrosLic');
+    if (btnExportCuadros) {
+      btnExportCuadros.addEventListener('click', () => exportAllGrupoCuadrosLic(btnExportCuadros));
+    }
+
     const compareContent = $('compareContent');
     if (compareContent && !compareContent.dataset.exportBound) {
       compareContent.dataset.exportBound = '1';
@@ -1843,7 +2611,14 @@
     }
 
     document.querySelectorAll('[data-img]').forEach((btn) => {
-      btn.addEventListener('click', () => QB.export.chartImage(btn.dataset.img, `${btn.dataset.img}.png`));
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.img;
+        if (id === 'chartDist' || id === 'chartDistGt70') {
+          exportRatioImage(btn, id);
+          return;
+        }
+        QB.export.chartImage(id, id + '.png');
+      });
     });
     window.addEventListener('online', () => updateConnBadge());
     window.addEventListener('offline', () => updateConnBadge());
@@ -1887,48 +2662,69 @@
     const btn = $('btnRefresh');
     const text = btn && btn.querySelector('.status-text');
     const hasData = !!(state.rows && state.rows.length);
+    const fechaRoot = document.getElementById('fechaDd');
+    const fechaBtn = document.getElementById('fechaDdBtn');
+    let usedProgress = false;
 
     if (btn) btn.classList.add('is-busy');
     if (text) text.textContent = '…';
+    if (fechaRoot) fechaRoot.classList.add('is-busy');
+    if (fechaBtn) fechaBtn.setAttribute('aria-busy', 'true');
 
     if (!hasData) {
       document.body.classList.remove('is-ready');
       showLoadModal('Cargando', 'Espera un momento, por favor…');
     } else {
-      showSyncBanner(
-        'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
-      );
+      usedProgress = true;
+      startSyncProgress({
+        startText: 'Trayendo la última fecha… Aún puedes usar la app.'
+      });
     }
 
     try {
-      const r = await QB.api.refresh({ fecha: state.fecha || '' });
-      if ((r.pack.data || []).length || !hasData) {
-        applyPack(r.pack, { requestedFecha: state.fecha || '' });
+      /* Sin fecha = GET del día más reciente (última hoja) */
+      const r = await QB.api.refresh({ fecha: '' });
+      const pack = r.pack;
+      const latest = String((pack && pack.hoy) || '').trim();
+      if ((pack && pack.data && pack.data.length) || !hasData) {
+        applyPack(pack, { requestedFecha: latest || '' });
       }
       if (r.changed && !r.error) {
         flashHero();
-        QB.export.toast('Ya lista · se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
+        const n = (pack.data && pack.data.length) || 0;
+        const label = latest ? fechaLabelText(latest) : 'día actual';
+        QB.export.toast('Ya lista · ' + label + ' · ' + n + ' personas', 'ok');
+        if (usedProgress) {
+          finishSyncProgress('100% · última fecha lista · ' + fmt(n) + ' registros.');
+        }
       } else if (r.error && hasData) {
         QB.export.toast('Sin red · sigues con lo último', 'warn');
+        if (usedProgress) finishSyncProgress('Sin red · sigues con lo guardado.');
       } else if (!hasData) {
-        const n = (r.pack.data && r.pack.data.length) || 0;
+        const n = (pack.data && pack.data.length) || 0;
         if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
         else QB.export.toast('Sin datos del día', 'warn');
+      } else if (usedProgress) {
+        finishSyncProgress('100% · última fecha al día.');
       }
     } catch (err) {
       const cached = QB.api.getCachedPack && QB.api.getCachedPack();
       if (cached && (cached.data || []).length) {
         applyPack(cached);
         QB.export.toast('Error de red · mostrando cache', 'warn');
+        if (usedProgress) finishSyncProgress('Error de red · mostrando lo guardado.');
       } else {
         QB.export.toast('Error API: ' + (err && err.message ? err.message : 'error'), 'warn');
+        if (usedProgress) finishSyncProgress('No se pudo actualizar · intenta de nuevo.');
       }
     } finally {
       hideLoadModal();
-      hideSyncBanner();
+      if (!usedProgress) hideSyncBanner();
       document.body.classList.add('is-ready');
       if (btn) btn.classList.remove('is-busy');
       if (text) text.textContent = 'Actualizar';
+      if (fechaRoot) fechaRoot.classList.remove('is-busy');
+      if (fechaBtn) fechaBtn.setAttribute('aria-busy', 'false');
       updateConnBadge();
     }
   }
@@ -2437,6 +3233,377 @@
     return people.filter((r) => String(r.grupo || '') === g);
   }
 
+  function buildGrupoExportMetas() {
+    const report = state.report;
+    if (!report) return [];
+    const stats = QB.charts.buildGrupoStats(report.data || []);
+    const grupos = (stats.length ? stats : (report.kpis && report.kpis.porGrupo) || [])
+      .slice()
+      .sort((a, b) => (b.c || 0) - (a.c || 0));
+    const fecha = activeFechaIso();
+    return grupos
+      .map((g) => {
+        const people = workersOfGrupo(g.grupo);
+        if (!people.length) return null;
+        const jefe =
+          (QB.supervisors &&
+            (QB.supervisors.fullLabel(g.grupo, fecha) || QB.supervisors.label(g.grupo, fecha))) ||
+          '';
+        return {
+          grupo: g.grupo,
+          grupoShort: shortGrupo(g.grupo),
+          jefe,
+          fecha,
+          fechaLabel: fecha ? fechaLabelText(fecha) : 'Sin fecha',
+          people,
+          syncedAt: state.syncedAt || ''
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function lotesListForGrupo(people) {
+    const set = new Set();
+    (people || []).forEach((r) => {
+      if (Array.isArray(r.lotes) && r.lotes.length) {
+        r.lotes.forEach((l) => {
+          const lot = String(l.lote || '').trim();
+          if (lot) set.add(shortLote(lot));
+        });
+      } else if (r.lote) {
+        const lot = String(r.lote).trim();
+        if (lot) set.add(shortLote(lot));
+      }
+    });
+    return [...set].filter(Boolean).sort();
+  }
+
+  /** Lotes del LIC · filas reales del reporte del día (sin perder lotes al fusionar por CI). */
+  function lotesListForGrupoFromReport(grupoKey, report) {
+    const g = String(grupoKey || '');
+    const set = new Set();
+    const rows = (report && report.data) || state.rows || [];
+    rows.forEach((r) => {
+      if (String(r.grupo || '') !== g) return;
+      if (Array.isArray(r.lotes) && r.lotes.length) {
+        r.lotes.forEach((l) => {
+          const lot = String(l.lote || '').trim();
+          if (lot) set.add(shortLote(lot));
+        });
+      } else if (r.lote) {
+        const lot = String(r.lote).trim();
+        if (lot) set.add(shortLote(lot));
+      }
+    });
+    return [...set].filter(Boolean).sort();
+  }
+
+  function activeFechaIso() {
+    const f = String(state.fecha || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(f)) return f.slice(0, 10);
+    const fromLabel = fechaIsoFromLabel(fechaLabelText(f));
+    if (fromLabel) return fromLabel;
+    const p = (state.report && state.report.data && state.report.data[0]) || null;
+    return p && p.fecha ? String(p.fecha).slice(0, 10) : '';
+  }
+
+  function lotesLabelForGrupo(people) {
+    const list = lotesListForGrupo(people);
+    return list.length ? list.join(' · ') : '—';
+  }
+
+  function fechaIsoFromLabel(label) {
+    const meses = {
+      enero: '01',
+      febrero: '02',
+      marzo: '03',
+      abril: '04',
+      mayo: '05',
+      junio: '06',
+      julio: '07',
+      agosto: '08',
+      septiembre: '09',
+      setiembre: '09',
+      octubre: '10',
+      noviembre: '11',
+      diciembre: '12'
+    };
+    const m = String(label || '').match(/(\d{1,2})\s+de\s+([A-Za-zÁÉÍÓÚáéíóúñ]+)\s+de\s+(\d{4})/i);
+    if (!m) return '';
+    const mes = meses[
+      m[2]
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+    ];
+    if (!mes) return '';
+    return m[3] + '-' + mes + '-' + String(m[1]).padStart(2, '0');
+  }
+
+  function fechaCortaFromIso(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '—';
+    return m[3] + '/' + m[2] + '/' + m[1].slice(2);
+  }
+
+  function buildGrupoCuadroMetas() {
+    const report = state.report;
+    const fechaIso = activeFechaIso();
+    return buildGrupoExportMetas().map((meta) => {
+      const people = workersOfGrupo(meta.grupo);
+      const totalJr = people.length;
+      const totalKgExportables = people.reduce((s, r) => s + (Number(r.c) || 0), 0);
+      const descarte = QB.descartes ? QB.descartes.forLic(meta.grupo, fechaIso) : 0;
+      const totalJarras = totalKgExportables + descarte;
+      const fechaCorta = fechaCortaFromIso(fechaIso);
+      const supervisor =
+        (QB.supervisors && QB.supervisors.licSupervisorBlock(meta.grupo, fechaIso)) ||
+        meta.jefe ||
+        'Sin supervisor';
+      const supervisorGeneral =
+        (QB.supervisors && QB.supervisors.generalSupervisorBlock(meta.grupo, fechaIso)) || '—';
+      const lotesList = lotesListForGrupoFromReport(meta.grupo, report);
+      return {
+        ...meta,
+        people,
+        fecha: fechaIso,
+        fechaLabel: fechaIso ? fechaLabelText(fechaIso) : meta.fechaLabel,
+        fechaCorta,
+        supervisor,
+        supervisorGeneral,
+        totalJr,
+        totalKgExportables,
+        deshidratado: descarte,
+        descarte,
+        totalJarras,
+        ratio: totalJr ? totalJarras / totalJr : 0,
+        lotesList,
+        lotes: lotesList.length ? lotesList.join(' · ') : '—'
+      };
+    });
+  }
+
+  function setExportIconBtnBusy(btn, busy) {
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.classList.toggle('is-busy', busy);
+  }
+
+  async function exportAllGrupoReportesPdf(btn) {
+    if (btn) setExportIconBtnBusy(btn, true);
+    try {
+      if (QB.descartes && QB.descartes.load) {
+        await QB.descartes.load(true);
+      }
+
+      const fechas = pickFechasComparacionPdf();
+      if (fechas.length < 2) {
+        QB.export.toast('Se necesitan 2 fechas de descarte para comparar (ej. 31/08 y 01/09)', 'warn');
+        return;
+      }
+
+      const packs = {};
+      await Promise.all(
+        fechas.map(async (f) => {
+          try {
+            let pack = state.comparePacks[f];
+            if (f === state.fecha && state.report && (state.report.data || []).length) {
+              pack = state.report;
+            }
+            if (!pack || !(pack.data || []).length) {
+              const fetchPromise = QB.api.cargarTodo({ fecha: f, allowCacheFallback: true });
+              const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 12000));
+              pack = await Promise.race([fetchPromise, timeoutPromise]);
+              if (pack && (pack.data || []).length) state.comparePacks[f] = pack;
+            }
+            if (pack) packs[f] = pack;
+          } catch (e) {
+            /* sin pack de producción · igual se compara descarte */
+          }
+        })
+      );
+
+      const model = buildComparacionFechasPdfModel(fechas, packs);
+      if (!model || !model.rows.length) {
+        QB.export.toast('Sin datos de descarte para comparar esas fechas', 'warn');
+        return;
+      }
+      await QB.export.comparacionFechasPdf(model);
+    } catch (err) {
+      QB.export.toast(
+        'Error al exportar PDF: ' + (err && err.message ? err.message : 'falló'),
+        'warn'
+      );
+    } finally {
+      if (btn) setExportIconBtnBusy(btn, false);
+    }
+  }
+
+  function pickFechasComparacionPdf() {
+    const descFechas = QB.descartes && QB.descartes.fechas ? QB.descartes.fechas() : [];
+    if (descFechas.length >= 2) {
+      const active = activeFechaIso();
+      if (active && descFechas.indexOf(active) >= 0) {
+        const idx = descFechas.indexOf(active);
+        const other = descFechas[idx - 1] || descFechas[idx + 1];
+        if (other) return sortCompareFechas([other, active]);
+      }
+      return sortCompareFechas(descFechas).slice(-2);
+    }
+    const opts = (state.fechaOpts || []).map((o) => o.value).filter(Boolean);
+    return sortCompareFechas(opts).slice(-2);
+  }
+
+  function buildLicStatsFromPack(pack, fecha) {
+    const people = mergeByWorker(pack || { data: [] });
+    const byLic = {};
+    people.forEach((r) => {
+      const grupo = String(r.grupo || '');
+      if (!grupo) return;
+      const lic = QB.supervisors ? QB.supervisors.licKey(grupo) : shortGrupo(grupo);
+      if (!byLic[lic]) {
+        byLic[lic] = { lic, grupo, kg: 0, jr: 0 };
+      }
+      byLic[lic].kg += Number(r.c) || 0;
+      byLic[lic].jr += 1;
+    });
+    Object.keys(byLic).forEach((lic) => {
+      const row = byLic[lic];
+      const desc = QB.descartes ? QB.descartes.forLic(row.grupo || lic, fecha) : 0;
+      row.desc = desc;
+      row.tot = row.kg + desc;
+      row.ratio = row.jr ? row.tot / row.jr : 0;
+      const fromDesc =
+        QB.descartes && QB.descartes.rowsForFecha
+          ? (QB.descartes.rowsForFecha(fecha).find((x) => x.lic === lic) || {}).nombre
+          : '';
+      row.nombre =
+        (QB.supervisors && QB.supervisors.label(row.grupo || lic, fecha)) || fromDesc || '—';
+    });
+    if (QB.descartes && QB.descartes.rowsForFecha) {
+      (QB.descartes.rowsForFecha(fecha) || []).forEach((drow) => {
+        const lic = drow.lic;
+        if (!lic || byLic[lic]) return;
+        const desc = Number(drow.jarras_de_descarte) || 0;
+        byLic[lic] = {
+          lic,
+          grupo: lic,
+          kg: 0,
+          jr: 0,
+          desc,
+          tot: desc,
+          ratio: 0,
+          nombre: drow.nombre || '—'
+        };
+      });
+    }
+    return byLic;
+  }
+
+  function buildComparacionFechasPdfModel(fechas, packsByFecha) {
+    const list = (fechas || []).slice(0, 2);
+    if (list.length < 2) return null;
+    const f0 = list[0];
+    const f1 = list[1];
+    const map0 = buildLicStatsFromPack(packsByFecha[f0], f0);
+    const map1 = buildLicStatsFromPack(packsByFecha[f1], f1);
+    const licSet = new Set([...Object.keys(map0), ...Object.keys(map1)]);
+    const licNum = (lic) => {
+      const m = String(lic || '').match(/\d+/);
+      return m ? parseInt(m[0], 10) : 9999;
+    };
+    const rows = [...licSet]
+      .sort((a, b) => licNum(a) - licNum(b))
+      .map((lic) => {
+        const a = map0[lic] || { kg: 0, desc: 0, tot: 0, ratio: 0, jr: 0, nombre: '' };
+        const b = map1[lic] || { kg: 0, desc: 0, tot: 0, ratio: 0, jr: 0, nombre: '' };
+        return {
+          lic,
+          nombre: b.nombre || a.nombre || '—',
+          kg0: a.kg || 0,
+          desc0: a.desc || 0,
+          tot0: a.tot || 0,
+          ratio0: a.ratio || 0,
+          kg1: b.kg || 0,
+          desc1: b.desc || 0,
+          tot1: b.tot || 0,
+          ratio1: b.ratio || 0,
+          deltaDesc: (b.desc || 0) - (a.desc || 0)
+        };
+      })
+      .filter((r) => r.desc0 > 0 || r.desc1 > 0 || r.kg0 > 0 || r.kg1 > 0);
+
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.kg0 += r.kg0;
+        acc.desc0 += r.desc0;
+        acc.tot0 += r.tot0;
+        acc.kg1 += r.kg1;
+        acc.desc1 += r.desc1;
+        acc.tot1 += r.tot1;
+        acc.deltaDesc += r.deltaDesc;
+        return acc;
+      },
+      { kg0: 0, desc0: 0, tot0: 0, kg1: 0, desc1: 0, tot1: 0, deltaDesc: 0 }
+    );
+
+    return {
+      days: [
+        { fecha: f0, corta: fechaCortaFromIso(f0), label: fechaLabelText(f0) },
+        { fecha: f1, corta: fechaCortaFromIso(f1), label: fechaLabelText(f1) }
+      ],
+      rows,
+      totals
+    };
+  }
+
+  async function exportAllGrupoReportesImg(btn) {
+    const metas = buildGrupoExportMetas();
+    if (!metas.length) {
+      QB.export.toast('Sin grupos para exportar', 'warn');
+      return;
+    }
+
+    if (btn) setExportIconBtnBusy(btn, true);
+    try {
+      await QB.export.allGrupoTeamPngsZip(metas);
+    } catch (err) {
+      QB.export.toast(
+        'Error al exportar imágenes: ' + (err && err.message ? err.message : 'falló'),
+        'warn'
+      );
+    } finally {
+      if (btn) setExportIconBtnBusy(btn, false);
+    }
+  }
+
+  async function exportAllGrupoCuadrosLic(btn) {
+    if (!activeFechaIso()) {
+      QB.export.toast('Elige la fecha de cosecha en el selector', 'warn');
+      return;
+    }
+    if (QB.descartes && QB.descartes.load) {
+      await QB.descartes.load(true);
+    }
+    const metas = buildGrupoCuadroMetas();
+    if (!metas.length) {
+      QB.export.toast('Sin grupos para exportar', 'warn');
+      return;
+    }
+
+    if (btn) setExportIconBtnBusy(btn, true);
+    try {
+      await QB.export.allGrupoCuadrosPngsZip(metas);
+    } catch (err) {
+      QB.export.toast(
+        'Error al exportar cuadros: ' + (err && err.message ? err.message : 'falló'),
+        'warn'
+      );
+    } finally {
+      if (btn) setExportIconBtnBusy(btn, false);
+    }
+  }
+
   function openGruposModal(report) {
     const k = (report && report.kpis) || {};
     openSheetModal({
@@ -2477,9 +3644,9 @@
     let people = allTeam;
 
     if (jarFilter === 'lt40') {
-      people = people.filter((r) => Number(r.c || 0) < 40);
+      people = people.filter((r) => Number(r.c || 0) < COMPARE_LT40);
     } else if (jarFilter === 'gte40') {
-      people = people.filter((r) => Number(r.c || 0) > 40);
+      people = people.filter((r) => Number(r.c || 0) >= COMPARE_GTE58);
     }
 
     if (q) {
@@ -2493,8 +3660,8 @@
       });
     }
 
-    const nLt40 = allTeam.filter((r) => Number(r.c || 0) < 40).length;
-    const nGte40 = allTeam.filter((r) => Number(r.c || 0) > 40).length;
+    const nLt40 = allTeam.filter((r) => Number(r.c || 0) < COMPARE_LT40).length;
+    const nGte40 = allTeam.filter((r) => Number(r.c || 0) >= COMPARE_GTE58).length;
     const totalJarras = allTeam.reduce((s, r) => s + (r.c || 0), 0);
     const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(grupoKey) : '';
     const jefeShort = QB.supervisors ? QB.supervisors.label(grupoKey) : '';
@@ -2516,8 +3683,8 @@
         }${fmt(allTeam.length)} personas · ${fmt(totalJarras)} jarras</p>
       </header>
       <div class="jar-filters" role="group" aria-label="Filtrar por jarras">
-        ${filterChip('lt40', 'Menos de 40', nLt40)}
-        ${filterChip('gte40', 'Más de 40', nGte40)}
+        ${filterChip('lt40', 'Menos de ' + COMPARE_LT40, nLt40)}
+        ${filterChip('gte40', COMPARE_GTE58 + ' o más', nGte40)}
         ${filterChip('all', 'Todos', allTeam.length)}
       </div>
       <div class="grupo-search">
@@ -2803,6 +3970,8 @@
       openWorkerModal(row);
     };
     charts.renderDayPack(report, merged);
+    renderRatioSheetBar();
+    renderRatioChart();
     requestAnimationFrame(function () {
       charts.resizeAll();
     });
@@ -3119,8 +4288,8 @@
         `Promedio jarras/persona: ${fmt(k.promedioCajasPorTrabajador)}`
       ],
       titles: {
-        chartGauge: 'Termómetro jarras / persona',
-        chartDist: 'Distribución por persona',
+        chartDist: 'Ratios Cosecha / Diario',
+        chartDistGt70: 'Más de 70 jarras',
         chartTopLotes: 'Lotes con más jarras',
         chartTopLic: 'LIC con más producción',
         chartLiderazgo: 'Supervisor · más liderazgo',

@@ -194,6 +194,24 @@ QB.icons = {
     );
   },
 
+  pdf(size) {
+    return this.svg(
+      `<path d="M14 3.5H8.5A2.5 2.5 0 0 0 6 6v12a2.5 2.5 0 0 0 2.5 2.5h7A2.5 2.5 0 0 0 18 18V8.5L14 3.5z"/><path d="M14 3.5V8.5h4.5"/><path d="M8.3 13.1h1.7l.8 2.1.8-2.1h1.7"/><path d="M8.3 16.1h5.4"/>`,
+      size
+    );
+  },
+
+  image(size) {
+    return this.svg(
+      `<rect x="4.5" y="6" width="15" height="12" rx="2"/><circle cx="9.5" cy="10.5" r="1.7"/><path d="M6 16.5 9.5 13l2.5 2.5L13.5 11l4.5 5.5"/>`,
+      size
+    );
+  },
+
+  bolt(size) {
+    return this.svg(`<path d="M13 2.5 4.5 14h6.2l-1.2 7.5L19.5 10H13.2l-.2-7.5z"/>`, size);
+  },
+
   cloud(size) {
     return this.svg(
       `<path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58 5.2 5.2 0 0 0-10-1.5A3.6 3.6 0 0 0 7.5 18.5z"/>`,
@@ -259,6 +277,9 @@ QB.icons = {
       share: () => this.share(size),
       refresh: () => this.refresh(size),
       file: () => this.file(size),
+      pdf: () => this.pdf(size),
+      image: () => this.image(size),
+      bolt: () => this.bolt(size),
       cloud: () => this.cloud(size),
       wifi: () => this.wifi(size),
       info: () => this.info(size),

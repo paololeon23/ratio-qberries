@@ -666,82 +666,136 @@ QB.charts = {
     }, true);
   },
 
-  /** Gauge · promedio con zonas de color */
+  /** Barra horizontal · promedio del día en rangos de jarras */
   renderGauge(kpis) {
     const chart = this.ensure('chartGauge');
     if (!chart) return;
     const mobile = this.isMobile();
     const avg = Number((kpis && kpis.promedioCajasPorTrabajador) || 0);
-    const max = Math.max(120, Math.ceil((avg * 1.6) / 10) * 10 || 120);
+    const max = 160;
     const pct = max ? avg / max : 0;
     let zoneText = 'Ritmo bajo';
     let zoneColor = '#e41e26';
-    if (pct >= 0.75) { zoneText = '¡Excelente!'; zoneColor = '#4ab848'; }
-    else if (pct >= 0.5) { zoneText = 'Buen ritmo'; zoneColor = '#8dc63f'; }
-    else if (pct >= 0.35) { zoneText = 'Ritmo regular'; zoneColor = '#f7941d'; }
+    if (pct >= 0.82) { zoneText = '¡Excelente!'; zoneColor = '#4ab848'; }
+    else if (pct >= 0.63) { zoneText = 'Buen ritmo'; zoneColor = '#8dc63f'; }
+    else if (pct >= 0.44) { zoneText = 'Ritmo regular'; zoneColor = '#f7941d'; }
+
+    if (!avg) {
+      chart.clear();
+      chart.setOption({
+        title: {
+          text: 'Sin promedio aún',
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
+        }
+      });
+      return;
+    }
 
     chart.setOption({
       toolbox: this.toolboxMini(),
-      series: [{
-        type: 'gauge',
-        center: ['50%', mobile ? '58%' : '55%'],
-        radius: mobile ? '78%' : '82%',
+      grid: { left: 4, right: mobile ? 56 : 72, top: 12, bottom: 8, containLabel: true },
+      xAxis: {
+        type: 'value',
         min: 0,
         max,
-        startAngle: 210,
-        endAngle: -30,
-        progress: { show: true, width: mobile ? 14 : 16, itemStyle: { color: zoneColor } },
-        axisLine: {
-          lineStyle: {
-            width: mobile ? 14 : 16,
-            color: [
-              [0.35, '#fecaca'],
-              [0.5, '#fed7aa'],
-              [0.75, '#d9f99d'],
-              [1, '#86efac']
-            ]
-          }
-        },
+        axisLabel: this._numAxisLabel({ fontSize: mobile ? 10 : 11 }),
+        splitLine: { show: false },
+        axisLine: { lineStyle: { color: '#dce5df' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: ['Promedio'],
+        axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { length: 10, lineStyle: { color: '#c5d4ca', width: 2 } },
-        axisLabel: { distance: 16, color: '#5f7264', fontSize: 11, fontFamily: 'IBM Plex Sans' },
-        pointer: { length: '60%', width: 6, itemStyle: { color: '#142019' } },
-        anchor: { show: true, size: 12, itemStyle: { color: zoneColor, borderWidth: 2, borderColor: '#fff' } },
-        detail: {
-          show: false
+        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 700, color: '#1f2a30' })
+      },
+      series: [
+        {
+          type: 'bar',
+          data: [max],
+          barWidth: mobile ? 26 : 32,
+          barGap: '-100%',
+          itemStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 1,
+              y2: 0,
+              colorStops: [
+                { offset: 0, color: '#fecaca' },
+                { offset: 0.25, color: '#fed7aa' },
+                { offset: 0.44, color: '#fef08a' },
+                { offset: 0.63, color: '#d9f99d' },
+                { offset: 0.82, color: '#86efac' },
+                { offset: 1, color: '#4ade80' }
+              ]
+            },
+            borderRadius: 16,
+            opacity: 0.55
+          },
+          silent: true,
+          z: 1
         },
-        title: { show: false },
-        data: [{ value: avg, name: 'Promedio' }]
-      }]
+        {
+          type: 'bar',
+          data: [avg],
+          barWidth: mobile ? 26 : 32,
+          itemStyle: { color: zoneColor, borderRadius: 16 },
+          label: {
+            show: true,
+            position: 'right',
+            distance: 8,
+            formatter: () => avg.toFixed(1),
+            color: '#143525',
+            fontWeight: 800,
+            fontSize: mobile ? 12 : 13
+          },
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: '#912018', type: 'dashed', width: 2 },
+            label: {
+              formatter: '40',
+              color: '#912018',
+              fontWeight: 700,
+              fontSize: 10
+            },
+            data: [{ xAxis: 40 }]
+          },
+          z: 2
+        }
+      ],
+      animationDuration: 650
     }, true);
   },
 
-  /** Termómetro visual HTML · jarras / persona */
+  /** KPIs del ritmo del día */
   renderThermoDay(kpis, rows) {
-    const fill = document.getElementById('thermoFill');
-    const bulb = document.getElementById('thermoBulb');
-    const valEl = document.getElementById('thermoValue');
-    const zoneEl = document.getElementById('thermoZone');
-    if (!fill || !valEl) return;
+    const avgEl = document.getElementById('ritmoAvg');
+    const peopleEl = document.getElementById('ritmoPeople');
+    const zoneEl = document.getElementById('ritmoZone');
+    if (!avgEl) return;
 
     let avg = Number((kpis && kpis.promedioCajasPorTrabajador) || 0);
     if (!avg && rows && rows.length) {
       const vals = rows.map((r) => Number(r.c) || 0).filter((n) => n > 0);
       avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     }
-    const max = Math.max(120, Math.ceil((avg * 1.55) / 10) * 10 || 120);
-    const pct = Math.max(0, Math.min(100, (avg / max) * 100));
+    const nPeople = Number((kpis && kpis.trabajadores) || 0) || (rows || []).length || 0;
+    const max = 160;
+    const pct = max ? avg / max : 0;
 
     let zone = 'Ritmo bajo';
     let color = '#e41e26';
-    if (pct >= 75) { zone = '¡Excelente!'; color = '#4ab848'; }
-    else if (pct >= 50) { zone = 'Buen ritmo'; color = '#8dc63f'; }
-    else if (pct >= 35) { zone = 'Ritmo regular'; color = '#f7941d'; }
+    if (pct >= 0.82) { zone = '¡Excelente!'; color = '#4ab848'; }
+    else if (pct >= 0.63) { zone = 'Buen ritmo'; color = '#8dc63f'; }
+    else if (pct >= 0.44) { zone = 'Ritmo regular'; color = '#f7941d'; }
 
-    fill.style.height = pct + '%';
-    fill.style.background = 'linear-gradient(180deg, ' + color + ', ' + color + 'cc)';
-    if (bulb) bulb.style.background = color;
-    valEl.textContent = avg ? avg.toFixed(1) : '—';
+    avgEl.textContent = avg ? avg.toFixed(1) : '—';
+    if (peopleEl) peopleEl.textContent = nPeople ? String(nPeople) : '—';
     if (zoneEl) {
       zoneEl.textContent = avg ? zone : 'Sin datos';
       zoneEl.style.background = avg ? color + '22' : '';
@@ -764,84 +818,328 @@ QB.charts = {
     );
   },
 
-  _insightDist(rows) {
-    const values = (rows || []).map((r) => r.c).filter((n) => n > 0);
+  _insightDist(rows, opts) {
+    const values = (rows || []).map((r) => Number(r.c) || 0).filter((n) => n > 0);
     if (!values.length) {
-      this.setInsight('insightDist', 'Sin personas con jarras para armar rangos.');
+      this.setInsight('insightDist', 'Sin personas en los rangos de ratio.');
       return;
     }
-    const low = values.filter((v) => v <= 40).length;
-    const high = values.filter((v) => v >= 131).length;
+    const bins = this._ratioBins();
+    const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
+    const total = counts.reduce((a, n) => a + n, 0);
+    const topIdx = counts.reduce((best, n, i) => (n > counts[best] ? i : best), 0);
+    const nFechas = opts && opts.nFechas ? Number(opts.nFechas) : 0;
+    const multi = nFechas > 1;
+    const unit = multi ? 'registros' : 'personas';
+    const head = multi
+      ? 'TOTAL ' + total + ' ' + unit + ' · ' + nFechas + ' fechas'
+      : 'TOTAL ' + total + ' personas';
+    const rango = bins[topIdx].label;
     this.setInsight(
       'insightDist',
-      values.length + ' personas: ' + low + ' en ritmo bajo (≤40) · ' +
-        high + ' en ritmo alto (≥131).'
+      head +
+        ' · más concentradas en ' +
+        rango +
+        ' (' +
+        counts[topIdx] +
+        ' ' +
+        unit +
+        ').'
     );
   },
 
-  /** Histograma · rendimiento por persona (colores fáciles de leer) */
-  renderDist(rows) {
+  _ratioBins() {
+    return [
+      { label: '≤30 JARRAS', min: 1, max: 30 },
+      { label: '31-40 JARRAS', min: 31, max: 40 },
+      { label: '41-50 JARRAS', min: 41, max: 50 },
+      { label: '51-60 JARRAS', min: 51, max: 60 },
+      { label: '61-70 JARRAS', min: 61, max: 70 },
+      { label: '>70 JARRAS', min: 71, max: Infinity }
+    ];
+  },
+
+  /** Histograma · Ratios Cosecha / Diario · rangos oficiales + >70 */
+  renderDist(rows, opts) {
     const chart = this.ensure('chartDist');
     if (!chart) return;
     const mobile = this.isMobile();
-    const values = (rows || []).map((r) => r.c).filter((n) => n > 0);
-    const totalPeople = values.length || 1;
-    const bins = [
-      { label: '0–40', hint: 'Bajo', min: 0, max: 40 },
-      { label: '41–70', hint: 'Regular', min: 41, max: 70 },
-      { label: '71–100', hint: 'Bueno', min: 71, max: 100 },
-      { label: '101–130', hint: 'Muy bueno', min: 101, max: 130 },
-      { label: '131–160', hint: 'Alto', min: 131, max: 160 },
-      { label: '160+', hint: 'Excelente', min: 161, max: Infinity }
-    ];
+    const animate = !(opts && opts.animate === false);
+    const values = (rows || []).map((r) => Number(r.c) || 0).filter((n) => n > 0);
+    const bins = this._ratioBins();
     const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
+    const totalPeople = counts.reduce((a, n) => a + n, 0) || 1;
+    const barColors = ['#e41e26', '#f7941d', '#8dc63f', '#4ab848', '#2f7d4a', '#1f5f38'];
+
+    if (!values.length) {
+      chart.clear();
+      chart.setOption({
+        title: {
+          text: 'Sin personas con jarras aún',
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
+        }
+      });
+      return;
+    }
+
     chart.setOption({
+      animation: animate,
+      animationDuration: animate ? 650 : 0,
+      animationDurationUpdate: animate ? 400 : 0,
+      title: {
+        text: 'Ratios Cosecha / Diario',
+        left: 'center',
+        top: 4,
+        textStyle: {
+          color: '#143525',
+          fontSize: mobile ? 14 : 16,
+          fontWeight: 800,
+          fontFamily: 'inherit'
+        }
+      },
       tooltip: Object.assign(this.tipBase(), {
         trigger: 'axis',
         triggerOn: mobile ? 'mousemove|click' : 'mousemove',
+        axisPointer: { type: 'shadow' },
         formatter: (p) => {
           const i = p[0].dataIndex;
           const b = bins[i];
           const n = counts[i];
           const pct = ((n / totalPeople) * 100).toFixed(1);
-          return `<b>${b.hint}</b> (${b.label} jarras)<br/>Personas: <b>${n}</b><br/>Del total: <b>${pct}%</b>`;
+          return (
+            '<b>' +
+            b.label +
+            '</b><br/>Personas: <b>' +
+            n +
+            '</b><br/>Del total: <b>' +
+            pct +
+            '%</b>'
+          );
         }
       }),
-      grid: { left: 4, right: 8, top: 28, bottom: mobile ? 48 : 40, containLabel: true },
+      grid: {
+        left: 8,
+        right: 12,
+        top: mobile ? 48 : 52,
+        bottom: mobile ? 52 : 42,
+        containLabel: true
+      },
       toolbox: this.toolboxMini(),
       xAxis: {
         type: 'category',
-        data: bins.map((b) => b.label + '\n' + b.hint),
-        axisLabel: this._label({ fontSize: mobile ? 9 : 10, fontWeight: 650, interval: 0 }),
-        axisTick: { show: false }
+        data: bins.map((b) => b.label),
+        name: mobile ? '' : 'Ratio de cosecha/día',
+        nameLocation: 'middle',
+        nameGap: mobile ? 36 : 34,
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
+        axisLabel: this._label({
+          fontSize: mobile ? 9 : 11,
+          fontWeight: 750,
+          color: '#1f2a30',
+          interval: 0,
+          rotate: mobile ? 28 : 0
+        }),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#c5d2c9', width: 2 } }
       },
       yAxis: {
         type: 'value',
-        name: mobile ? '' : 'N° personas',
+        name: mobile ? '' : 'Personas',
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
         minInterval: 1,
         axisLabel: this._baseText(),
-        splitLine: { lineStyle: { color: '#eef2ec' } }
+        splitLine: { lineStyle: { color: '#e8efe9', type: 'dashed' } },
+        axisLine: { show: false }
       },
-      series: [{
-        type: 'bar',
-        data: counts.map((n, i) => ({
-          value: n,
-          itemStyle: { borderRadius: [10, 10, 0, 0], color: this.distColor(i) }
-        })),
-        barMaxWidth: 48,
-        label: {
-          show: true,
-          position: 'top',
-          color: '#143525',
-          fontWeight: 700,
-          fontSize: 11,
-          formatter: (p) => {
-            const pct = ((p.value / totalPeople) * 100).toFixed(0);
-            return p.value + '\n(' + pct + '%)';
+      series: [
+        {
+          type: 'bar',
+          name: 'Personas',
+          data: counts.map((n, i) => ({
+            value: n,
+            itemStyle: {
+              borderRadius: [8, 8, 0, 0],
+              color: this.barGrad(barColors[i % barColors.length], '#f4faf5', true)
+            }
+          })),
+          barMaxWidth: mobile ? 44 : 64,
+          label: {
+            show: true,
+            position: 'top',
+            distance: 6,
+            color: '#143525',
+            fontWeight: 800,
+            fontSize: mobile ? 11 : 12,
+            formatter: (p) => {
+              const n = Number(p.value) || 0;
+              return n + ' personas';
+            }
           }
         }
-      }],
-      animationDuration: 650
+      ]
+    }, true);
+  },
+
+  _ratioBinsGt70() {
+    return [
+      { label: '71-80 JARRAS', min: 71, max: 80 },
+      { label: '81-90 JARRAS', min: 81, max: 90 },
+      { label: '91-100 JARRAS', min: 91, max: 100 },
+      { label: '>100 JARRAS', min: 101, max: Infinity }
+    ];
+  },
+
+  _insightDistGt70(rows, opts) {
+    const values = (rows || []).map((r) => Number(r.c) || 0).filter((n) => n > 70);
+    if (!values.length) {
+      this.setInsight('insightDistGt70', 'Sin personas con más de 70 jarras en las fechas filtradas.');
+      return;
+    }
+    const bins = this._ratioBinsGt70();
+    const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
+    const total = values.length;
+    const topIdx = counts.reduce((best, n, i) => (n > counts[best] ? i : best), 0);
+    const nFechas = opts && opts.nFechas ? Number(opts.nFechas) : 0;
+    const multi = nFechas > 1;
+    const unit = multi ? 'registros' : 'personas';
+    const head = multi
+      ? 'TOTAL ' + total + ' ' + unit + ' · ' + nFechas + ' fechas'
+      : 'TOTAL ' + total + ' personas';
+    this.setInsight(
+      'insightDistGt70',
+      head +
+        ' con más de 70 jarras · más concentradas en ' +
+        bins[topIdx].label +
+        ' (' +
+        counts[topIdx] +
+        ' ' +
+        unit +
+        ').'
+    );
+  },
+
+  /** Histograma · más de 70 jarras */
+  renderDistGt70(rows, opts) {
+    const chart = this.ensure('chartDistGt70');
+    if (!chart) return;
+    const mobile = this.isMobile();
+    const animate = !(opts && opts.animate === false);
+    const values = (rows || []).map((r) => Number(r.c) || 0).filter((n) => n > 70);
+    const bins = this._ratioBinsGt70();
+    const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
+    const totalPeople = counts.reduce((a, n) => a + n, 0) || 1;
+    const barColors = ['#f7941d', '#e85d04', '#e41e26', '#9b1c1c'];
+
+    if (!values.length) {
+      chart.clear();
+      chart.setOption({
+        title: {
+          text: 'Sin personas con más de 70 jarras',
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
+        }
+      });
+      return;
+    }
+
+    chart.setOption({
+      animation: animate,
+      animationDuration: animate ? 650 : 0,
+      animationDurationUpdate: animate ? 400 : 0,
+      title: {
+        text: 'Más de 70 jarras',
+        left: 'center',
+        top: 4,
+        textStyle: {
+          color: '#143525',
+          fontSize: mobile ? 14 : 16,
+          fontWeight: 800,
+          fontFamily: 'inherit'
+        }
+      },
+      tooltip: Object.assign(this.tipBase(), {
+        trigger: 'axis',
+        triggerOn: mobile ? 'mousemove|click' : 'mousemove',
+        axisPointer: { type: 'shadow' },
+        formatter: (p) => {
+          const i = p[0].dataIndex;
+          const b = bins[i];
+          const n = counts[i];
+          const pct = ((n / totalPeople) * 100).toFixed(1);
+          return (
+            '<b>' +
+            b.label +
+            '</b><br/>Personas: <b>' +
+            n +
+            '</b><br/>Del total &gt;70: <b>' +
+            pct +
+            '%</b>'
+          );
+        }
+      }),
+      grid: {
+        left: 8,
+        right: 12,
+        top: mobile ? 48 : 52,
+        bottom: mobile ? 52 : 42,
+        containLabel: true
+      },
+      toolbox: this.toolboxMini(),
+      xAxis: {
+        type: 'category',
+        data: bins.map((b) => b.label),
+        name: mobile ? '' : 'Jarras',
+        nameLocation: 'middle',
+        nameGap: mobile ? 36 : 34,
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
+        axisLabel: this._label({
+          fontSize: mobile ? 9 : 11,
+          fontWeight: 750,
+          color: '#1f2a30',
+          interval: 0,
+          rotate: mobile ? 28 : 0
+        }),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#c5d2c9', width: 2 } }
+      },
+      yAxis: {
+        type: 'value',
+        name: mobile ? '' : 'Personas',
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
+        minInterval: 1,
+        axisLabel: this._baseText(),
+        splitLine: { lineStyle: { color: '#e8efe9', type: 'dashed' } },
+        axisLine: { show: false }
+      },
+      series: [
+        {
+          type: 'bar',
+          name: 'Personas',
+          data: counts.map((n, i) => ({
+            value: n,
+            itemStyle: {
+              borderRadius: [8, 8, 0, 0],
+              color: this.barGrad(barColors[i % barColors.length], '#fff5f5', true)
+            }
+          })),
+          barMaxWidth: mobile ? 52 : 80,
+          label: {
+            show: true,
+            position: 'top',
+            distance: 6,
+            color: '#143525',
+            fontWeight: 800,
+            fontSize: mobile ? 11 : 12,
+            formatter: (p) => {
+              const n = Number(p.value) || 0;
+              return n + ' personas';
+            }
+          }
+        }
+      ]
     }, true);
   },
 
@@ -1638,13 +1936,6 @@ QB.charts = {
 
     this.renderPeoresLic(porGrupo);
     this._insightPeoresLic(porGrupo);
-
-    // Avance · termómetro + distribución
-    this.renderThermoDay(kpis, merged);
-    this.renderGauge(kpis);
-    this._insightGauge(kpis, merged);
-    this.renderDist(merged);
-    this._insightDist(merged);
   },
 
   _barHSupervisores(chartId, items, valueKey, opts) {
@@ -1757,7 +2048,7 @@ QB.charts = {
     this._barHSupervisores('chartTopSupervisores', top, 'c', { unit: 'Jarras' });
   },
 
-  /** Comparación · supervisores con más personas < 40 jarras */
+  /** Comparación · supervisores con más personas < 30 jarras */
   renderCompareLt40Supervisores(items) {
     if (typeof echarts === 'undefined') return;
     const host = document.getElementById('chartCompareLt40Sup');
@@ -1766,17 +2057,21 @@ QB.charts = {
     const mobile = this.isMobile();
     const list = [...(items || [])].filter((s) => Number(s.n) > 0).sort((a, b) => b.n - a.n);
     const top = list;
-    const zoomThreshold = mobile ? 7 : 10;
-    const useZoom = top.length > zoomThreshold;
-    const maxN = top.length ? Math.max(...top.map((s) => Number(s.n) || 0)) : 0;
-    const yMax = Math.max(5, Math.ceil((maxN * 1.22) / 5) * 5);
-    const visibleBars = useZoom ? zoomThreshold : Math.min(top.length, mobile ? 8 : top.length);
-    const chartH = mobile
-      ? Math.max(220, Math.min(useZoom ? 300 : 340, 68 + visibleBars * 24 + (useZoom ? 40 : 56)))
-      : Math.max(340, Math.min(580, 120 + top.length * 24));
+    const wrap = host.parentElement;
+    const parentW = (wrap && wrap.clientWidth) || host.clientWidth || 320;
+    const barSlot = mobile ? 76 : 88;
+    const needScroll = top.length > (mobile ? 4 : 6);
+    const chartW = needScroll
+      ? Math.max(parentW, top.length * barSlot + 56)
+      : parentW;
+    const chartH = mobile ? 260 : 320;
 
-    host.style.width = '100%';
+    if (wrap) {
+      wrap.classList.toggle('is-scrollable', needScroll);
+    }
+    host.style.width = chartW + 'px';
     host.style.maxWidth = 'none';
+    host.style.minWidth = chartW + 'px';
     host.style.minHeight = chartH + 'px';
     host.style.height = chartH + 'px';
 
@@ -1787,7 +2082,7 @@ QB.charts = {
       chart.clear();
       chart.setOption({
         title: {
-          text: 'Sin personas bajo 40 jarras',
+          text: 'Sin personas bajo 34 jarras',
           left: 'center',
           top: 'middle',
           textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
@@ -1797,13 +2092,12 @@ QB.charts = {
       return;
     }
 
-    const zoomEnd = useZoom ? Math.round((zoomThreshold / top.length) * 100) : 100;
-
     chart.setOption({
       title: { show: false },
       tooltip: Object.assign(this.tipBase(), {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        confine: true,
         formatter: (p) => {
           const s = top[p[0].dataIndex];
           if (!s) return '';
@@ -1812,50 +2106,32 @@ QB.charts = {
             s.nombre +
             '</b><br/>' +
             (s.lic ? 'LIC: ' + s.lic + '<br/>' : '') +
-            'Personas &lt; 40: <b>' +
+            'Personas &lt; 34: <b>' +
             s.n +
             '</b>'
           );
         }
       }),
       grid: {
-        left: mobile ? 4 : 10,
-        right: mobile ? 4 : 10,
-        top: mobile ? 46 : 50,
-        bottom: useZoom ? (mobile ? 44 : 48) : mobile ? 62 : 58,
+        left: mobile ? 8 : 14,
+        right: mobile ? 14 : 20,
+        top: mobile ? 42 : 48,
+        bottom: mobile ? 68 : 64,
         containLabel: true
       },
       toolbox: { show: false },
-      dataZoom: useZoom
-          ? [
-              {
-                type: 'inside',
-                xAxisIndex: 0,
-                start: 0,
-                end: zoomEnd,
-                startValue: 0,
-                zoomOnMouseWheel: true,
-                moveOnMouseMove: true,
-                filterMode: 'none'
-              },
-              {
-                type: 'slider',
-                xAxisIndex: 0,
-                start: 0,
-                end: zoomEnd,
-                startValue: 0,
-                height: mobile ? 16 : 14,
-                bottom: 4,
-                left: '2%',
-                right: '2%',
-                showDetail: false,
-                borderColor: '#fecdca',
-                fillerColor: 'rgba(228, 30, 38, 0.18)',
-                handleStyle: { color: '#e41e26', borderColor: '#fff', borderWidth: 2 },
-                filterMode: 'none'
-              }
-            ]
-          : [],
+      dataZoom: needScroll
+        ? [
+            {
+              type: 'inside',
+              xAxisIndex: 0,
+              zoomOnMouseWheel: false,
+              moveOnMouseMove: true,
+              moveOnMouseWheel: true,
+              filterMode: 'none'
+            }
+          ]
+        : [],
       xAxis: {
         type: 'category',
         data: top.map((s) => s.short || s.nombre),
@@ -1864,8 +2140,8 @@ QB.charts = {
           fontWeight: 650,
           color: '#1f2a30',
           interval: 0,
-          rotate: mobile ? 35 : 25,
-          margin: 10
+          rotate: mobile ? 32 : 22,
+          margin: 12
         }),
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#eef1f3' } }
@@ -1874,7 +2150,7 @@ QB.charts = {
         type: 'value',
         name: 'Personas',
         min: 0,
-        max: yMax,
+        max: Math.max(5, Math.ceil((Math.max(...top.map((s) => Number(s.n) || 0)) * 1.22) / 5) * 5),
         minInterval: 1,
         nameTextStyle: { color: '#912018', fontSize: 11, fontWeight: 700, padding: [0, 0, 6, 0] },
         nameGap: 14,
@@ -1891,12 +2167,12 @@ QB.charts = {
               color: self.barGrad(i === 0 ? '#e41e26' : '#f7941d', i === 0 ? '#ff8a80' : '#ffd08a', true)
             }
           })),
-          barMaxWidth: mobile ? 48 : 56,
-          barCategoryGap: mobile ? '28%' : '32%',
+          barMaxWidth: mobile ? 44 : 52,
+          barCategoryGap: '30%',
           label: {
             show: true,
             position: 'top',
-            distance: 10,
+            distance: 8,
             overflow: 'none',
             color: '#912018',
             fontWeight: 800,
@@ -1908,10 +2184,8 @@ QB.charts = {
       animationDuration: 750,
       animationEasing: 'cubicOut'
     }, true);
-    const resetView = () => this.resetCompareLt40Zoom(chart, 0, zoomEnd, useZoom);
-    resetView();
-    setTimeout(resetView, 80);
-    setTimeout(resetView, 220);
+    chart.resize({ width: chartW, height: chartH });
+    setTimeout(() => chart.resize({ width: chartW, height: chartH }), 80);
   },
 
   renderPromedioSupervisor(supervisores) {

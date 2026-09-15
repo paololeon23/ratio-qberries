@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m261" />
+  <link rel="stylesheet" href="css/app.css?v=m333" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -293,7 +293,7 @@
             </div>
           </div>
           <div class="excel-actions" aria-label="Exportar Excel">
-            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Descargar Excel · personas con menos de 40 jarras">
+            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Descargar Excel · personas con menos de 30 jarras">
               Excel &lt; 40
             </button>
             <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Descargar Excel · personas con más de 40 jarras">
@@ -345,66 +345,14 @@
     </section>
 
     <section class="report-panel" id="panelAvance" data-panel="avance" hidden>
-      <div class="charts-grid charts-grid--avance" aria-label="Ritmo del día">
-        <section class="panel chart-panel chart-panel-wide thermo-panel" title="Termómetro de jarras por persona">
-          <div class="panel-head">
-            <div class="panel-title">
-              <span class="title-ico tone-red" data-title-ico="gauge" aria-hidden="true"></span>
-              <div>
-                <h2>Termómetro del día</h2>
-                <p class="muted">Promedio de jarras por persona · ritmo general</p>
-              </div>
-            </div>
-            <div class="chart-actions">
-              <button type="button" class="btn btn-ghost btn-icon" data-img="chartGauge" title="Descargar imagen" aria-label="Descargar gráfico"></button>
-              <button type="button" class="btn btn-ghost btn-icon" data-share="chartGauge" title="Compartir" aria-label="Compartir gráfico"></button>
-            </div>
-          </div>
-          <div class="thermo-layout">
-            <div class="thermo-kpi-row">
-              <div class="thermo-kpi-card">
-                <span class="thermo-kpi-label">Promedio del día</span>
-                <div class="thermo-metric">
-                  <strong id="thermoValue">—</strong>
-                  <span class="thermo-unit">jarras / persona</span>
-                </div>
-              </div>
-              <div class="thermo-status-card">
-                <span class="thermo-kpi-label">Estado del ritmo</span>
-                <span class="thermo-badge" id="thermoZone">Sin datos</span>
-              </div>
-            </div>
-            <div class="thermo-visual-row">
-              <div class="thermo-visual-card">
-                <p class="thermo-visual-title">Termómetro</p>
-                <div class="thermo-side" aria-hidden="true">
-                  <div class="thermo-scale">
-                    <span>Alto</span><span>Medio</span><span>Bajo</span>
-                  </div>
-                  <div class="thermo">
-                    <div class="thermo-tube">
-                      <div class="thermo-fill" id="thermoFill"></div>
-                    </div>
-                    <div class="thermo-bulb" id="thermoBulb"></div>
-                  </div>
-                </div>
-              </div>
-              <div class="thermo-visual-card">
-                <p class="thermo-visual-title">Velocímetro</p>
-                <div class="chart-wrap chart-gauge" id="chartGauge"></div>
-              </div>
-            </div>
-          </div>
-          <p class="chart-insight" id="insightGauge"></p>
-        </section>
-
-        <section class="panel chart-panel chart-panel-wide" title="Distribución de jarras por persona">
+      <div class="charts-grid charts-grid--avance" aria-label="Ratios del día">
+        <section class="panel chart-panel chart-panel-wide ratio-panel" title="Ratios cosecha diario · personas por rango de jarras">
           <div class="panel-head">
             <div class="panel-title">
               <span class="title-ico tone-green" data-title-ico="bars" aria-hidden="true"></span>
               <div>
-                <h2>¿Cómo van las personas?</h2>
-                <p class="muted">Cuántas personas hay en cada rango de jarras</p>
+                <h2>Ratios Cosecha / Diario</h2>
+                <p class="muted">Ratio de cosecha/día · ≤30 JARRAS · 31-40 JARRAS · 41-50 JARRAS · 51-60 JARRAS · 61-70 JARRAS · &gt;70 JARRAS</p>
               </div>
             </div>
             <div class="chart-actions">
@@ -412,8 +360,50 @@
               <button type="button" class="btn btn-ghost btn-icon" data-share="chartDist" title="Compartir" aria-label="Compartir gráfico"></button>
             </div>
           </div>
-          <div class="chart-wrap chart-same" id="chartDist"></div>
+          <div class="ratio-sheet-bar" id="ratioSheetBar" aria-label="Fechas del gráfico de ratios">
+            <div class="ratio-sheet-head">
+              <div class="ratio-sheet-actions">
+                <button type="button" class="btn btn-ghost ratio-mode-btn" id="btnRatioSolo" title="Usar solo la fecha del selector principal">Solo fecha</button>
+                <button type="button" class="btn btn-ghost ratio-mode-btn" id="btnRatioTodas" title="Unir todas las fechas disponibles">Todas</button>
+              </div>
+              <div class="ratio-sheet-exports">
+                <button type="button" class="btn btn-excel ratio-excel-btn" id="btnExcelRatio" title="Exportar Excel · personas según las fechas seleccionadas">
+                  Excel ratios
+                </button>
+                <button type="button" class="btn btn-excel is-img ratio-img-btn" id="btnImgRatio" title="Generar imagen PNG · con leyenda de la fecha filtrada">
+                  Generar imagen
+                </button>
+              </div>
+            </div>
+            <div class="ratio-sheet-chips" id="ratioSheetChips" role="group" aria-label="Elegir fechas"></div>
+            <p class="muted ratio-sheet-meta" id="ratioSheetMeta"></p>
+          </div>
+          <div class="chart-wrap chart-ratio" id="chartDist"></div>
           <p class="chart-insight" id="insightDist"></p>
+        </section>
+
+        <section class="panel chart-panel chart-panel-wide ratio-panel ratio-panel-gt70" title="Más de 70 jarras">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="title-ico tone-red" data-title-ico="bars" aria-hidden="true"></span>
+              <div>
+                <h2>Más de 70 jarras</h2>
+                <p class="muted">Personas con ratio diario mayor a 70 · mismas fechas del filtro de arriba</p>
+              </div>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="btn btn-excel is-high ratio-excel-gt70" id="btnExcelRatioGt70" title="Excel · solo personas con más de 70 jarras">
+                Excel &gt; 70
+              </button>
+              <button type="button" class="btn btn-excel is-img ratio-img-btn" id="btnImgRatioGt70" title="Generar imagen PNG · con leyenda de la fecha filtrada">
+                Generar imagen
+              </button>
+              <button type="button" class="btn btn-ghost btn-icon" data-img="chartDistGt70" title="Descargar imagen" aria-label="Descargar gráfico"></button>
+              <button type="button" class="btn btn-ghost btn-icon" data-share="chartDistGt70" title="Compartir" aria-label="Compartir gráfico"></button>
+            </div>
+          </div>
+          <div class="chart-wrap chart-ratio chart-ratio-gt70" id="chartDistGt70"></div>
+          <p class="chart-insight" id="insightDistGt70"></p>
         </section>
       </div>
     </section>
@@ -425,7 +415,7 @@
             <span class="title-ico tone-lime" data-title-ico="layers" aria-hidden="true"></span>
             <div>
               <h2>Comparación</h2>
-              <p class="muted" id="compareMeta">Comparación de hojas · personas con menos de 40 jarras</p>
+              <p class="muted" id="compareMeta">Comparación de hojas · personas con menos de 30 jarras</p>
             </div>
           </div>
         </div>
@@ -504,16 +494,17 @@
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m261"></script>
-  <script src="js/workers.js?v=m261"></script>
-  <script src="js/api.js?v=m261"></script>
-  <script src="js/icons.js?v=m261"></script>
-  <script src="js/avatars.js?v=m261"></script>
-  <script src="js/supervisors.js?v=m261"></script>
-  <script src="js/charts.js?v=m261"></script>
-  <script src="js/select.js?v=m261"></script>
-  <script src="js/export.js?v=m261"></script>
-  <script src="js/app.js?v=m261"></script>
+  <script src="js/config.js?v=m333"></script>
+  <script src="js/workers.js?v=m333"></script>
+  <script src="js/api.js?v=m333"></script>
+  <script src="js/icons.js?v=m333"></script>
+  <script src="js/avatars.js?v=m333"></script>
+  <script src="js/supervisors.js?v=m333"></script>
+  <script src="js/descartes.js?v=m333"></script>
+  <script src="js/charts.js?v=m333"></script>
+  <script src="js/select.js?v=m333"></script>
+  <script src="js/export.js?v=m333"></script>
+  <script src="js/app.js?v=m333"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

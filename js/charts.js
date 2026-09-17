@@ -247,13 +247,17 @@ QB.charts = {
 
   grupoConJefe(g) {
     const base = this.shortGrupo(g);
-    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const fecha =
+      (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
+      (window.QB && QB.appFecha ? QB.appFecha() : '');
     const jefe = window.QB && QB.supervisors ? QB.supervisors.label(g, fecha) : '';
     return jefe ? base + ' · ' + jefe : base;
   },
 
   jefeDe(g) {
-    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const fecha =
+      (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
+      (window.QB && QB.appFecha ? QB.appFecha() : '');
     return window.QB && QB.supervisors ? QB.supervisors.label(g, fecha) : '';
   },
 
@@ -859,37 +863,37 @@ QB.charts = {
     ];
   },
 
-  /** Histograma · Ratios Cosecha / Diario · rangos oficiales + >70 */
-  renderDist(rows, opts) {
-    const chart = this.ensure('chartDist');
-    if (!chart) return;
-    const mobile = this.isMobile();
-    const animate = !(opts && opts.animate === false);
+  /** Opción ECharts · mismo estilo Ratios Cosecha / Diario */
+  buildDistOption(rows, opts) {
+    opts = opts || {};
+    const mobile = opts.mobile != null ? !!opts.mobile : this.isMobile();
+    const animate = !(opts.animate === false);
     const values = (rows || []).map((r) => Number(r.c) || 0).filter((n) => n > 0);
     const bins = this._ratioBins();
     const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
     const totalPeople = counts.reduce((a, n) => a + n, 0) || 1;
     const barColors = ['#e41e26', '#f7941d', '#8dc63f', '#4ab848', '#2f7d4a', '#1f5f38'];
+    const titleText = opts.title || 'Ratios Cosecha / Diario';
+    const self = this;
 
     if (!values.length) {
-      chart.clear();
-      chart.setOption({
+      return {
+        animation: false,
         title: {
           text: 'Sin personas con jarras aún',
           left: 'center',
           top: 'middle',
           textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
         }
-      });
-      return;
+      };
     }
 
-    chart.setOption({
+    return {
       animation: animate,
       animationDuration: animate ? 650 : 0,
       animationDurationUpdate: animate ? 400 : 0,
       title: {
-        text: 'Ratios Cosecha / Diario',
+        text: titleText,
         left: 'center',
         top: 4,
         textStyle: {
@@ -926,7 +930,7 @@ QB.charts = {
         bottom: mobile ? 52 : 42,
         containLabel: true
       },
-      toolbox: this.toolboxMini(),
+      toolbox: opts.hideToolbox ? { show: false } : this.toolboxMini(),
       xAxis: {
         type: 'category',
         data: bins.map((b) => b.label),
@@ -961,7 +965,7 @@ QB.charts = {
             value: n,
             itemStyle: {
               borderRadius: [8, 8, 0, 0],
-              color: this.barGrad(barColors[i % barColors.length], '#f4faf5', true)
+              color: self.barGrad(barColors[i % barColors.length], '#f4faf5', true)
             }
           })),
           barMaxWidth: mobile ? 44 : 64,
@@ -979,7 +983,215 @@ QB.charts = {
           }
         }
       ]
-    }, true);
+    };
+  },
+
+  /**
+   * PNG offscreen del histograma de ratios (mismo look que chartDist)
+   * opts: { title, width, height }
+   */
+  async captureDistPng(rows, opts) {
+    opts = opts || {};
+    if (typeof echarts === 'undefined' || !echarts.init) return null;
+    const W = opts.width || 920;
+    const H = opts.height || 440;
+    const host = document.createElement('div');
+    host.style.cssText =
+      'position:fixed;left:-99999px;top:0;width:' + W + 'px;height:' + H + 'px;background:#fff;';
+    document.body.appendChild(host);
+    let chart = null;
+    try {
+      chart = echarts.init(host, null, { renderer: 'canvas', devicePixelRatio: 2 });
+      const option = this.buildDistOption(
+        rows,
+        Object.assign({}, opts, { animate: false, mobile: false, hideToolbox: true })
+      );
+      chart.setOption(option, true);
+      chart.resize();
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setTimeout(resolve, 90));
+        });
+      });
+      return chart.getDataURL({
+        type: 'png',
+        pixelRatio: 2,
+        backgroundColor: '#ffffff'
+      });
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        if (chart) chart.dispose();
+      } catch (_) {}
+      if (host.parentNode) host.parentNode.removeChild(host);
+    }
+  },
+
+  /**
+   * Opción · ratios juntos por módulo (barras agrupadas · misma clasificación)
+   * modulos: [{ label: 'Módulo 5', people: [...] }, ...]
+   */
+  buildDistModulosGroupedOption(modulos, opts) {
+    opts = opts || {};
+    const bins = this._ratioBins();
+    const list = (modulos || []).filter((m) => m && (m.people || []).length);
+    /* Colores fijos por nº de módulo · bien distintos entre sí */
+    const colorByNum = {
+      1: '#7c3aed',
+      2: '#2563eb',
+      3: '#e41e26',
+      4: '#f7941d',
+      5: '#2f9e44',
+      6: '#0891b2',
+      7: '#db2777',
+      8: '#ca8a04'
+    };
+    const fallback = ['#2f9e44', '#f7941d', '#2563eb', '#e41e26', '#7c3aed', '#0891b2'];
+    const lightByNum = {
+      1: '#ede9fe',
+      2: '#dbeafe',
+      3: '#fee2e2',
+      4: '#ffedd5',
+      5: '#dcfce7',
+      6: '#cffafe',
+      7: '#fce7f3',
+      8: '#fef9c3'
+    };
+    const series = list.map((m, mi) => {
+      const values = (m.people || []).map((r) => Number(r.c) || 0).filter((n) => n > 0);
+      const counts = bins.map((b) => values.filter((v) => v >= b.min && v <= b.max).length);
+      const nMatch = String(m.label || '').match(/(\d+)/);
+      const num = nMatch ? Number(nMatch[1]) : 0;
+      const color = colorByNum[num] || fallback[mi % fallback.length];
+      const light = lightByNum[num] || '#f4faf5';
+      return {
+        type: 'bar',
+        name: m.label || 'Módulo',
+        data: counts,
+        barMaxWidth: list.length >= 3 ? 28 : 44,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: this.barGrad(color, light, true)
+        },
+        label: {
+          show: true,
+          position: 'top',
+          distance: 4,
+          color: '#143525',
+          fontWeight: 750,
+          fontSize: 11,
+          formatter: (p) => {
+            const n = Number(p.value) || 0;
+            return n ? String(n) : '';
+          }
+        }
+      };
+    });
+
+    return {
+      animation: false,
+      title: {
+        text: opts.title || 'Ratios Cosecha / Diario · por módulo',
+        left: 'center',
+        top: 4,
+        textStyle: {
+          color: '#143525',
+          fontSize: 16,
+          fontWeight: 800,
+          fontFamily: 'inherit'
+        }
+      },
+      legend: {
+        top: 36,
+        left: 'center',
+        itemWidth: 14,
+        itemHeight: 10,
+        textStyle: { color: '#143525', fontWeight: 700, fontSize: 12 }
+      },
+      tooltip: Object.assign(this.tipBase(), {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' }
+      }),
+      grid: {
+        left: 12,
+        right: 16,
+        top: 78,
+        bottom: 48,
+        containLabel: true
+      },
+      toolbox: { show: false },
+      xAxis: {
+        type: 'category',
+        data: bins.map((b) => b.label),
+        name: 'Ratio de cosecha/día',
+        nameLocation: 'middle',
+        nameGap: 34,
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
+        axisLabel: this._label({
+          fontSize: 11,
+          fontWeight: 750,
+          color: '#1f2a30',
+          interval: 0
+        }),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#c5d2c9', width: 2 } }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Personas',
+        nameTextStyle: { color: '#5b6b63', fontWeight: 650, fontSize: 11 },
+        minInterval: 1,
+        axisLabel: this._baseText(),
+        splitLine: { lineStyle: { color: '#e8efe9', type: 'dashed' } },
+        axisLine: { show: false }
+      },
+      series
+    };
+  },
+
+  /** Una sola PNG · todos los módulos juntos en la misma clasificación */
+  async captureDistModulosGroupedPng(modulos, opts) {
+    opts = opts || {};
+    if (typeof echarts === 'undefined' || !echarts.init) return null;
+    const list = (modulos || []).filter((m) => m && (m.people || []).length);
+    if (!list.length) return null;
+    const W = opts.width || 1100;
+    const H = opts.height || 520;
+    const host = document.createElement('div');
+    host.style.cssText =
+      'position:fixed;left:-99999px;top:0;width:' + W + 'px;height:' + H + 'px;background:#fff;';
+    document.body.appendChild(host);
+    let chart = null;
+    try {
+      chart = echarts.init(host, null, { renderer: 'canvas', devicePixelRatio: 2 });
+      chart.setOption(this.buildDistModulosGroupedOption(list, opts), true);
+      chart.resize();
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setTimeout(resolve, 100));
+        });
+      });
+      return chart.getDataURL({
+        type: 'png',
+        pixelRatio: 2,
+        backgroundColor: '#ffffff'
+      });
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        if (chart) chart.dispose();
+      } catch (_) {}
+      if (host.parentNode) host.parentNode.removeChild(host);
+    }
+  },
+
+  /** Histograma · Ratios Cosecha / Diario · rangos oficiales + >70 */
+  renderDist(rows, opts) {
+    const chart = this.ensure('chartDist');
+    if (!chart) return;
+    chart.setOption(this.buildDistOption(rows, opts), true);
   },
 
   _ratioBinsGt70() {
@@ -1892,7 +2104,9 @@ QB.charts = {
   /** —— Paneles del día · supervisores + lotes —— */
 
   buildSupervisorStats(porGrupo) {
-    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const fecha =
+      (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
+      (window.QB && QB.appFecha ? QB.appFecha() : '');
     return (porGrupo || [])
       .map((g) => {
         const full =
@@ -2883,7 +3097,9 @@ QB.charts = {
       byPeopleAsc.find((g) => g.grupo !== best.grupo) ||
       byPeopleAsc[0];
 
-    const fecha = window.QB && QB.appFecha ? QB.appFecha() : '';
+    const fecha =
+      (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
+      (window.QB && QB.appFecha ? QB.appFecha() : '');
     const jefe = (g) => {
       if (!window.QB || !QB.supervisors) return 'Sin jefe';
       return QB.supervisors.label(g, fecha) || 'Sin jefe';

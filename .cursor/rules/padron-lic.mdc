@@ -1,0 +1,20 @@
+---
+description: El padrón de LIC que el usuario pega es la fuente de verdad de ese día
+alwaysApply: true
+---
+
+# Padrón LIC actualizado
+
+Cuando el usuario envía una lista, captura o tabla de supervisores (nombre, DNI, fecha, grupo LIC), esa planilla es la **fuente de verdad** de ese día. No improvisar ni dejar jefes de fechas anteriores.
+
+## Qué hacer
+
+1. Actualizar `js/supervisors.js` con **todas** las filas de esa fecha.
+2. El jefe en mapa de grupos, gráficos, modales y export debe ser el de **esa fecha de cosecha**.
+3. La fecha de cosecha es `YYYY-MM-DD` (`fechaDisplay` / ISO). Nunca usar la clave interna de hoja (`__hoja__8`, etc.) para buscar el padrón.
+4. Si un LIC del reporte no está en el padrón de ese día, se puede heredar el último jefe **de ese LIC en una fecha anterior o igual**. Nunca un padrón posterior, y nunca un jefe de otro LIC.
+5. Subir la versión de caché (`index.html`, `js/config.js`, `service-worker.js`) para que la PWA recargue.
+
+## Ejemplo
+
+Lista del `2026-09-16` con HILARIO en LIC 17 y PAREDES en LIC 52 → esos nombres deben verse ese día. No REBAZA ni TORRES de planillas viejas.

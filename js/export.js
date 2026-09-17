@@ -915,10 +915,18 @@ QB.export = {
     ctx.font = '700 13px Helvetica, Arial, sans-serif';
     ctx.fillText('Q BERRIES', pad, 32);
     ctx.font = '800 24px Helvetica, Arial, sans-serif';
-    ctx.fillText('Reporte de equipo', pad, 60);
+    ctx.fillText(meta.reportKind === 'modulo' ? 'Personas por módulo' : 'Reporte de equipo', pad, 60);
     ctx.font = '500 13px Helvetica, Arial, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('Avance de jarras · Licapa · ' + people.length + ' personas', pad, 84);
+    ctx.fillText(
+      (meta.reportKind === 'modulo'
+        ? 'Personas con jarras · '
+        : 'Avance de jarras · Licapa · ') +
+        people.length +
+        ' personas',
+      pad,
+      84
+    );
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffffff';
@@ -931,7 +939,7 @@ QB.export = {
     }
     ctx.textAlign = 'left';
 
-    /* Título LIC + jefe */
+    /* Título LIC / módulo */
     let y = headerH + 30;
     ctx.fillStyle = '#0f1c14';
     ctx.font = '800 22px Helvetica, Arial, sans-serif';
@@ -939,7 +947,11 @@ QB.export = {
     y += 22;
     ctx.fillStyle = '#5a6b60';
     ctx.font = '500 13px Helvetica, Arial, sans-serif';
-    ctx.fillText('Supervisor / jefe: ' + jefe, pad, y);
+    ctx.fillText(
+      meta.reportKind === 'modulo' ? String(jefe || '') : 'Supervisor / jefe: ' + jefe,
+      pad,
+      y
+    );
     y += 10;
 
     /* KPI boxes */
@@ -1004,6 +1016,156 @@ QB.export = {
     if (!blob) return null;
     const buf = await blob.arrayBuffer();
     return { blob, filename, bytes: new Uint8Array(buf) };
+  },
+
+  /**
+   * Compone PNG de gráfico de ratios + pie de fechas
+   * Devuelve { blob, bytes, filename } o null
+   */
+  async _composeRatioChartPng(meta) {
+    meta = meta || {};
+    const chartUrl = meta.chartUrl;
+    if (!chartUrl) return null;
+    const labels = (meta.fechaLabels || []).filter(Boolean);
+    const legendTitle = meta.title || 'Q Berries · Ratios Cosecha / Diario';
+    const fileTag = meta.fileTag || 'ratios_cosecha';
+    const accent = meta.accent || '#2f9e44';
+
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('img'));
+      el.src = chartUrl;
+    }).catch(() => null);
+    if (!img) return null;
+
+    const scale = 2;
+    const padX = 28;
+    const padTop = 22;
+    const chartW = img.width;
+    const chartH = img.height;
+    const gapChartFooter = 22;
+    const footerPadY = 22;
+    const footerH = labels.length > 3 ? 136 : 118;
+    const W = Math.max(chartW / scale, 720);
+    const chartDrawW = W - padX * 2;
+    const chartDrawH = (chartH / chartW) * chartDrawW;
+    const H = padTop + chartDrawH + gapChartFooter + footerH + 12;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(img, padX, padTop, chartDrawW, chartDrawH);
+
+    const footY = padTop + chartDrawH + gapChartFooter;
+    ctx.fillStyle = '#f4f8f5';
+    ctx.fillRect(padX, footY, chartDrawW, footerH);
+    ctx.fillStyle = accent;
+    ctx.fillRect(padX, footY, 5, footerH);
+
+    const textX = padX + 22;
+    let ty = footY + footerPadY + 16;
+    ctx.fillStyle = '#143525';
+    ctx.font = '700 16px "IBM Plex Sans", "Segoe UI", sans-serif';
+    ctx.fillText(legendTitle, textX, ty);
+
+    ty += 28;
+    ctx.fillStyle = '#5b6b63';
+    ctx.font = '600 13px "IBM Plex Sans", "Segoe UI", sans-serif';
+    ctx.fillText('Fecha filtrada', textX, ty);
+
+    ty += 28;
+    const fechaLine = labels.length === 0 ? 'Sin fecha' : labels.join(' / ');
+    ctx.fillStyle = '#14532d';
+    ctx.font = '800 15px "IBM Plex Sans", "Segoe UI", sans-serif';
+    const maxFechaW = chartDrawW - 44;
+    let fechaDraw = fechaLine;
+    if (ctx.measureText(fechaDraw).width > maxFechaW) {
+      const parts = labels.slice();
+      let line1 = '';
+      let line2 = '';
+      for (let i = 0; i < parts.length; i++) {
+        const next = (line1 ? line1 + ' / ' : '') + parts[i];
+        if (!line2 && ctx.measureText(next).width <= maxFechaW) line1 = next;
+        else line2 = (line2 ? line2 + ' / ' : '') + parts[i];
+      }
+      ctx.fillText(line1 || fechaDraw, textX, ty);
+      if (line2) {
+        let l2 = line2;
+        if (ctx.measureText(l2).width > maxFechaW) {
+          while (l2.length > 8 && ctx.measureText(l2 + '…').width > maxFechaW) l2 = l2.slice(0, -1);
+          l2 += '…';
+        }
+        ctx.fillText(l2, textX, ty + 22);
+      }
+    } else {
+      ctx.fillText(fechaDraw, textX, ty);
+    }
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) return null;
+    const buf = await blob.arrayBuffer();
+    const slug =
+      labels.length === 1
+        ? String(labels[0] || 'dia')
+            .replace(/[^\w\-]+/g, '_')
+            .replace(/_+/g, '_')
+            .slice(0, 48)
+        : labels.length + '_fechas';
+    const filename = 'QBerries_' + fileTag + '_' + (slug || 'dia') + '.png';
+    return { blob, bytes: new Uint8Array(buf), filename };
+  },
+
+  /**
+   * Una sola PNG · ratios de todos los módulos juntos (clasificación agrupada)
+   * metas: [{ people, moduloLabel, fechaLabels, fecha }]
+   */
+  async modulosRatioPngZip(metas) {
+    const list = (metas || []).filter((m) => m && (m.people || []).length);
+    if (!list.length) {
+      this.toast('Sin módulos para exportar', 'warn');
+      return;
+    }
+    if (!QB.charts || typeof QB.charts.captureDistModulosGroupedPng !== 'function') {
+      this.toast('Gráfico no listo', 'warn');
+      return;
+    }
+
+    this.toast('Generando ratios de módulos…', 'ok');
+    const modulos = list.map((m) => ({
+      label: m.moduloLabel || m.grupoShort || 'Módulo',
+      people: m.people
+    }));
+    const labelsName = modulos.map((m) => m.label).join(' · ');
+    const chartUrl = await QB.charts.captureDistModulosGroupedPng(modulos, {
+      title: 'Ratios Cosecha / Diario · ' + labelsName
+    });
+    if (!chartUrl) {
+      this.toast('No se pudo generar la imagen', 'warn');
+      return;
+    }
+
+    const fechaLabels = (list[0] && list[0].fechaLabels) || [];
+    const built = await this._composeRatioChartPng({
+      chartUrl,
+      fechaLabels,
+      title: 'Q Berries · Ratios por módulo · ' + labelsName,
+      fileTag: 'ratios_modulos',
+      accent: '#2f9e44'
+    });
+    if (!built) {
+      this.toast('No se pudo generar la imagen', 'warn');
+      return;
+    }
+
+    this._downloadBlob(built.blob, built.filename);
+    this.toast('Imagen lista · ' + modulos.length + ' módulos juntos', 'ok');
   },
 
   /**
@@ -1851,37 +2013,88 @@ QB.export = {
    * Celdas string = texto (CI no pierde ceros); números = number
    */
   _xlsxFromRows(rows, sheetName) {
+    return this._xlsxFromSheets([{ name: sheetName || 'Datos', rows: rows || [] }]);
+  },
+
+  /**
+   * Varias hojas · sheets: [{ name, rows: [[...], ...] }, ...]
+   */
+  _xlsxFromSheets(sheets) {
     const esc = (s) => this._xmlEsc(s);
-    const name = String(sheetName || 'Datos').slice(0, 31) || 'Datos';
-    let sheetBody = '';
-    rows.forEach((row, ri) => {
-      const r = ri + 1;
-      let cells = '';
-      (row || []).forEach((val, ci) => {
-        const ref = this._xlsxCol(ci) + r;
-        if (typeof val === 'number' && Number.isFinite(val)) {
-          cells += `<c r="${ref}"><v>${val}</v></c>`;
-        } else {
-          cells += `<c r="${ref}" t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
-        }
-      });
-      sheetBody += `<row r="${r}">${cells}</row>`;
+    const list = (sheets || [])
+      .map((sh, i) => ({
+        name: String((sh && sh.name) || 'Hoja' + (i + 1))
+          .replace(/[\\/*?:\[\]]/g, ' ')
+          .trim()
+          .slice(0, 31) || 'Hoja' + (i + 1),
+        rows: (sh && sh.rows) || []
+      }))
+      .filter((sh) => sh.rows.length);
+    if (!list.length) {
+      list.push({ name: 'Datos', rows: [['Sin datos']] });
+    }
+
+    const usedNames = new Set();
+    list.forEach((sh) => {
+      let base = sh.name;
+      let n = 2;
+      while (usedNames.has(sh.name.toLowerCase())) {
+        const suffix = ' (' + n + ')';
+        sh.name = (base.slice(0, Math.max(1, 31 - suffix.length)) + suffix).slice(0, 31);
+        n++;
+      }
+      usedNames.add(sh.name.toLowerCase());
     });
 
-    const sheetXml =
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<sheetData>' +
-      sheetBody +
-      '</sheetData></worksheet>';
+    const files = [];
+    let sheetEntries = '';
+    let wbRels = '';
+    let overrides = '';
+
+    list.forEach((sh, idx) => {
+      const sid = idx + 1;
+      let sheetBody = '';
+      sh.rows.forEach((row, ri) => {
+        const r = ri + 1;
+        let cells = '';
+        (row || []).forEach((val, ci) => {
+          const ref = this._xlsxCol(ci) + r;
+          if (typeof val === 'number' && Number.isFinite(val)) {
+            cells += `<c r="${ref}"><v>${val}</v></c>`;
+          } else {
+            cells += `<c r="${ref}" t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+          }
+        });
+        sheetBody += `<row r="${r}">${cells}</row>`;
+      });
+      const sheetXml =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetData>' +
+        sheetBody +
+        '</sheetData></worksheet>';
+      files.push({ name: 'xl/worksheets/sheet' + sid + '.xml', data: sheetXml });
+      sheetEntries +=
+        '<sheet name="' + esc(sh.name) + '" sheetId="' + sid + '" r:id="rId' + sid + '"/>';
+      wbRels +=
+        '<Relationship Id="rId' +
+        sid +
+        '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' +
+        sid +
+        '.xml"/>';
+      overrides +=
+        '<Override PartName="/xl/worksheets/sheet' +
+        sid +
+        '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    });
 
     const workbookXml =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-      '<sheets><sheet name="' +
-      esc(name) +
-      '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+      '<sheets>' +
+      sheetEntries +
+      '</sheets></workbook>';
 
     const relsXml =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -1892,7 +2105,7 @@ QB.export = {
     const wbRelsXml =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      wbRels +
       '</Relationships>';
 
     const contentTypes =
@@ -1901,16 +2114,17 @@ QB.export = {
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
       '<Default Extension="xml" ContentType="application/xml"/>' +
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      overrides +
       '</Types>';
 
-    return this._zipStore([
-      { name: '[Content_Types].xml', data: contentTypes },
-      { name: '_rels/.rels', data: relsXml },
-      { name: 'xl/workbook.xml', data: workbookXml },
-      { name: 'xl/_rels/workbook.xml.rels', data: wbRelsXml },
-      { name: 'xl/worksheets/sheet1.xml', data: sheetXml }
-    ]);
+    return this._zipStore(
+      [
+        { name: '[Content_Types].xml', data: contentTypes },
+        { name: '_rels/.rels', data: relsXml },
+        { name: 'xl/workbook.xml', data: workbookXml },
+        { name: 'xl/_rels/workbook.xml.rels', data: wbRelsXml }
+      ].concat(files)
+    );
   },
 
   _downloadBlob(blob, filename) {
@@ -1925,13 +2139,13 @@ QB.export = {
   },
 
   /**
-   * Excel .xlsx · personas por umbral de jarras
-   * meta: { mode: 'lt40'|'gt40', people[], fecha, fechaLabel }
-   * lt40 = menos de 30 jarras · gt40 = 58 o más jarras
+   * Excel · personas del día · columnas fijas por módulo del día
+   * Ej.: Módulo 5 | Módulo 4 | Módulo 2 → celdas M5 / M4 / M2 si trabajó ahí
+   * meta: { people[], fecha, fechaLabel, multiFecha, separarPorModulo }
+   * separarPorModulo: una hoja por módulo (Módulo 5, Módulo 4…)
    */
-  excelPeopleByJarras(meta) {
+  excelPersonasDia(meta) {
     meta = meta || {};
-    const mode = meta.mode === 'gt40' ? 'gt40' : 'lt40';
     const people = [...(meta.people || [])].sort((a, b) => (b.c || 0) - (a.c || 0));
     if (!people.length) {
       this.toast('Sin personas para este Excel', 'warn');
@@ -1949,6 +2163,202 @@ QB.export = {
       r.ci ||
       '—';
 
+    const modNum = (m) => {
+      const x = String(m || '').match(/M\s*0*(\d+)/i);
+      return x ? Number(x[1]) : 0;
+    };
+
+    /* Solo módulos que alguien trabajó ese día (con jarras), orden M5 → M4 → M2… */
+    const modSet = new Set();
+    people.forEach((r) => {
+      (r.modulos || []).forEach((m) => {
+        if (m) modSet.add(String(m).toUpperCase());
+      });
+    });
+    const modCols = [...modSet].sort((a, b) => modNum(b) - modNum(a) || a.localeCompare(b));
+
+    const multi = !!meta.multiFecha;
+    const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_').replace(/[^\w\-]+/g, '');
+
+    /* Una hoja por módulo · Excel módulos */
+    if (meta.separarPorModulo) {
+      if (!modCols.length) {
+        this.toast('Sin módulos para separar', 'warn');
+        return;
+      }
+      const sheets = modCols.map((m) => {
+        const n = modNum(m);
+        const sheetName = n ? 'Modulo ' + n : m;
+        const header = multi
+          ? ['Fecha', 'CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Modulo']
+          : ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Modulo'];
+        const rows = [header];
+        people.forEach((r) => {
+          const has = new Set((r.modulos || []).map((x) => String(x).toUpperCase()));
+          if (!has.has(m)) return;
+          if (multi) {
+            rows.push([
+              r.fechaIso || r.fechaLabel || '',
+              String(r.ci || ''),
+              nombreDe(r),
+              shortGrupo(r.grupo),
+              jefeDe(r.grupo, r.fechaIso || meta.fecha),
+              Number(r.c || 0),
+              m
+            ]);
+          } else {
+            rows.push([
+              String(r.ci || ''),
+              nombreDe(r),
+              shortGrupo(r.grupo),
+              jefeDe(r.grupo, meta.fecha),
+              Number(r.c || 0),
+              m
+            ]);
+          }
+        });
+        return { name: sheetName, rows };
+      });
+      const bytes = this._xlsxFromSheets(sheets);
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const filename = 'QBerries_modulos_' + (fechaSlug || 'dia') + '.xlsx';
+      this._downloadBlob(blob, filename);
+      this.toast(
+        'Excel módulos · ' +
+          sheets.length +
+          ' hojas · ' +
+          modCols.join(', ')
+      );
+      return;
+    }
+
+    const header = multi
+      ? ['Fecha', 'CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras']
+      : ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras'];
+    modCols.forEach((m) => {
+      const n = modNum(m);
+      header.push(n ? 'Módulo ' + n : m);
+    });
+
+    const rows = [header];
+    people.forEach((r) => {
+      /* Solo marca el módulo si ESA persona lo trabajó */
+      const has = new Set((r.modulos || []).map((m) => String(m).toUpperCase()));
+      const row = multi
+        ? [
+            r.fechaIso || r.fechaLabel || '',
+            String(r.ci || ''),
+            nombreDe(r),
+            shortGrupo(r.grupo),
+            jefeDe(r.grupo, r.fechaIso || meta.fecha),
+            Number(r.c || 0)
+          ]
+        : [
+            String(r.ci || ''),
+            nombreDe(r),
+            shortGrupo(r.grupo),
+            jefeDe(r.grupo, meta.fecha),
+            Number(r.c || 0)
+          ];
+      modCols.forEach((m) => row.push(has.has(m) ? m : ''));
+      rows.push(row);
+    });
+
+    const bytes = this._xlsxFromRows(rows, 'Personas del dia');
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const filename = 'QBerries_personas_dia_' + (fechaSlug || 'dia') + '.xlsx';
+    this._downloadBlob(blob, filename);
+    this.toast(
+      'Excel descargado · ' +
+        people.length +
+        ' personas · ' +
+        (modCols.length ? modCols.join(', ') : 'sin módulos')
+    );
+  },
+
+  /**
+   * Excel · ratio por grupo LIC
+   * meta: { rows: [{grupo, supervisor, ratio, jarras, cosechadores, lt30, gte30}], fecha, fechaLabel }
+   */
+  excelGruposRatio(meta) {
+    meta = meta || {};
+    const list = [...(meta.rows || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0));
+    if (!list.length) {
+      this.toast('Sin grupos para este Excel', 'warn');
+      return;
+    }
+
+    const rows = [
+      [
+        'Grupo LIC',
+        'Supervisor',
+        'Ratio',
+        'Cantidad jarras',
+        'Cantidad cosechadores',
+        'Personas <30 jarras',
+        'Personas ≥30 jarras',
+        'Fecha'
+      ]
+    ];
+    list.forEach((r) => {
+      rows.push([
+        String(r.grupo || r.grupoFull || ''),
+        String(r.supervisor || ''),
+        Number(r.ratio || 0),
+        Number(r.jarras || 0),
+        Number(r.cosechadores || 0),
+        Number(r.lt30 || 0),
+        Number(r.gte30 || 0),
+        meta.fechaLabel || meta.fecha || ''
+      ]);
+    });
+
+    const bytes = this._xlsxFromRows(rows, 'Ratio por grupo');
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_').replace(/[^\w\-]+/g, '');
+    const filename = 'QBerries_ratio_grupos_' + (fechaSlug || 'dia') + '.xlsx';
+    this._downloadBlob(blob, filename);
+    this.toast('Ratio Excel · ' + list.length + ' grupos', 'ok');
+  },
+
+  /**
+   * Excel .xlsx · corte del día completo (todos los LIC)
+   * meta: { mode: 'lt40'|'gt40', people[], totalPeople, fecha, fechaLabel }
+   * lt40 = menos de 30 · gt40 = 30 o más (complemento: juntos = total del día)
+   */
+  excelPeopleByJarras(meta) {
+    meta = meta || {};
+    const mode = meta.mode === 'gt40' ? 'gt40' : 'lt40';
+    const isHigh = mode === 'gt40';
+    const people = [...(meta.people || [])].sort((a, b) => (b.c || 0) - (a.c || 0));
+    if (!people.length) {
+      this.toast('Sin personas para este Excel', 'warn');
+      return;
+    }
+
+    const shortGrupo = (g) => String(g || '—').replace(/^Grupo\s+/i, '') || '—';
+    const jefeDe = (g, fecha) => {
+      if (!QB.supervisors) return '';
+      return QB.supervisors.fullLabel(g, fecha) || QB.supervisors.label(g, fecha) || '';
+    };
+    const nombreDe = (r) =>
+      (QB.avatars && QB.avatars.realName(r)) ||
+      (QB.avatars && QB.avatars.shortName(r)) ||
+      r.ci ||
+      '—';
+
+    const nThis = people.length;
+    const nTotal = Number(meta.totalPeople || 0) || nThis;
+    const nOther = Math.max(0, nTotal - nThis);
+    const thisLabel = isHigh ? '30 o más jarras' : 'menos de 30 jarras';
+    const otherLabel = isHigh ? 'menos de 30 jarras' : '30 o más jarras';
+
     const rows = [['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Fecha']];
     people.forEach((r) => {
       rows.push([
@@ -1961,20 +2371,30 @@ QB.export = {
       ]);
     });
 
-    const bytes = this._xlsxFromRows(rows, mode === 'gt40' ? '58 o mas' : 'menos de 30');
+    const resumen = [
+      ['Concepto', 'Personas'],
+      ['Total del día (todos los LIC)', nTotal],
+      [thisLabel, nThis],
+      [otherLabel + ' (diferencia)', nOther],
+      ['Suma de ambos cortes', nThis + nOther],
+      ['Fecha', meta.fechaLabel || meta.fecha || '']
+    ];
+
+    const bytes = this._xlsxFromSheets([
+      { name: isHigh ? '30 o mas' : 'menos de 30', rows },
+      { name: 'Resumen', rows: resumen }
+    ]);
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
     const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_');
-    const tag = mode === 'gt40' ? '58_o_mas' : 'menos_de_34';
+    const tag = isHigh ? '30_o_mas' : 'menos_de_30';
     const filename = 'QBerries_' + tag + '_jarras_' + fechaSlug + '.xlsx';
 
     this._downloadBlob(blob, filename);
     this.toast(
-      'Excel descargado · ' +
-        people.length +
-        ' personas · ' +
-        (mode === 'gt40' ? '58 o más' : 'menos de 30')
+      'Excel · ' + nThis + ' ' + thisLabel + ' · diferencia ' + nOther + ' · total ' + nTotal,
+      'ok'
     );
   },
 

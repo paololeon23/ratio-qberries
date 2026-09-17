@@ -22,6 +22,6 @@ window.QB = window.QB || {};
     pageSize: 12,
     topN: 25,
     brand: 'Q Berries',
-    appVersion: 'm333'
+    appVersion: 'm355'
   };
 })();

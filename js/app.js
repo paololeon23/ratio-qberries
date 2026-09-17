@@ -673,7 +673,7 @@
     if (kind === 'leader' && topG) {
       const gFull = topG.grupo || '—';
       const gShort = shortGrupo(gFull);
-      const jefe = QB.supervisors ? QB.supervisors.fullLabel(gFull) || QB.supervisors.label(gFull) : '';
+      const jefe = supervisorFullLabel(gFull);
       const inGrupo = people.filter((p) => String(p.grupo || '') === String(gFull)).length;
       const avgG = inGrupo ? topG.c / inGrupo : 0;
       return {
@@ -692,7 +692,7 @@
 
     if (kind === 'top' && top) {
       const nombre = QB.avatars.realName(top) || QB.avatars.shortName(top) || top.ci;
-      const jefe = QB.supervisors ? QB.supervisors.fullLabel(top.grupo) || QB.supervisors.label(top.grupo) : '';
+      const jefe = supervisorFullLabel(top.grupo);
       const diff =
         second && second.c
           ? fmt(top.c - second.c) + ' jarras sobre el 2.º (' + (QB.avatars.shortName(second) || second.ci) + ')'
@@ -1144,6 +1144,177 @@
     }
   }
 
+  function limaHoyIso() {
+    try {
+      return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    } catch (_) {
+      const d = new Date();
+      return (
+        d.getFullYear() +
+        '-' +
+        String(d.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(d.getDate()).padStart(2, '0')
+      );
+    }
+  }
+
+  function toIsoDate(s) {
+    const str = String(s || '').trim();
+    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if (m) {
+      return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+    }
+    return '';
+  }
+
+  function fechaIsoKey(key) {
+    const k = String(key || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(k)) return k.slice(0, 10);
+    const h = (state.hojas || []).find((x) => x.fecha === k);
+    const opt = (state.fechaOpts || []).find((o) => o.value === k);
+    const pack =
+      (state.report && String(state.fecha) === k && state.report) ||
+      (state.comparePacks && state.comparePacks[k]) ||
+      null;
+    const fromRow = pack && pack.data && pack.data[0] && pack.data[0].fecha;
+    const candidates = [
+      h && h.fechaDisplay,
+      opt && opt.display,
+      pack && pack.hoy,
+      fromRow,
+      h && h.fecha,
+      k
+    ];
+    for (let i = 0; i < candidates.length; i++) {
+      const iso = toIsoDate(candidates[i]);
+      if (iso) return iso;
+    }
+    return fechaIsoFromLabel(fechaLabelText(k)) || '';
+  }
+
+  /**
+   * Solo el 16/09/2026 (hoy Lima): quita M3 · equipo de Paredes Galarreta → M5.
+   * Desde mañana no aplica.
+   */
+  function esEquipoParedesHoy(row, iso) {
+    if (!QB.supervisors) return false;
+    const s = QB.supervisors.byLic(row.grupo, iso);
+    if (s && QB.supervisors.normDni(s.dni) === '60741145') return true;
+    const lab =
+      (s && s.nombre) ||
+      QB.supervisors.fullLabel(row.grupo, iso) ||
+      QB.supervisors.label(row.grupo, iso) ||
+      '';
+    return /PAREDES\s+GALARRETA|CRISTHIAN\s+JEANPIER/i.test(lab);
+  }
+
+  function applyModuloFixTemporal(mods, row, iso) {
+    if (limaHoyIso() !== '2026-09-16') return mods || [];
+    let out = (mods || []).filter((m) => String(m).toUpperCase() !== 'M3');
+    if (esEquipoParedesHoy(row, iso)) out = ['M5'];
+    return out;
+  }
+
+  /** Mapa módulo → jarras · con fix temporal del día */
+  function personModulosJarras(row, iso) {
+    const byMod = new Map();
+    (row && row.lotes ? row.lotes : []).forEach((l) => {
+      const c = Number(l && l.c) || 0;
+      if (c <= 0) return;
+      const mod = shortModulo(l && (l.lote || l));
+      if (!mod) return;
+      byMod.set(mod, (byMod.get(mod) || 0) + c);
+    });
+    if (!byMod.size && row && Number(row.c) > 0) {
+      const top = shortModulo(row.modulo);
+      if (top) byMod.set(top, Number(row.c) || 0);
+    }
+    if (limaHoyIso() !== '2026-09-16') return byMod;
+    if (esEquipoParedesHoy(row, iso)) {
+      let total = 0;
+      byMod.forEach((c) => {
+        total += c;
+      });
+      const out = new Map();
+      if (total > 0) out.set('M5', total);
+      return out;
+    }
+    const out = new Map();
+    byMod.forEach((c, m) => {
+      if (String(m).toUpperCase() === 'M3') return;
+      out.set(m, c);
+    });
+    return out;
+  }
+
+  async function exportRatioModulosImage(btn) {
+    if (!QB.export || typeof QB.export.modulosRatioPngZip !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const fechas = getRatioFechas();
+    if (!fechas.length) {
+      QB.export.toast('Elige al menos una fecha', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      await ensureRatioPacks(fechas);
+      const byModulo = new Map();
+      fechas.forEach((f) => {
+        const pack = packForRatioFecha(f) || state.comparePacks[f];
+        if (!pack) return;
+        const iso = fechaIsoKey(f);
+        mergeByWorker(pack).forEach((r) => {
+          if (!(Number(r.c) > 0)) return;
+          const mods = personModulosJarras(r, iso);
+          mods.forEach((jarras, mod) => {
+            if (!(jarras > 0) || !mod) return;
+            if (!byModulo.has(mod)) byModulo.set(mod, []);
+            byModulo.get(mod).push(Object.assign({}, r, { c: jarras }));
+          });
+        });
+      });
+      const modNum = (m) => {
+        const x = String(m || '').match(/M\s*0*(\d+)/i);
+        return x ? Number(x[1]) : 0;
+      };
+      const fechaLabels = [...fechas]
+        .sort((a, b) => fechaLegendSortKey(a).localeCompare(fechaLegendSortKey(b)))
+        .map((f) => fechaLegendDdMmYyyy(f));
+      const metas = [...byModulo.entries()]
+        .sort((a, b) => modNum(b[0]) - modNum(a[0]) || a[0].localeCompare(b[0]))
+        .map(([mod, people]) => {
+          const n = modNum(mod);
+          return {
+            people,
+            moduloLabel: n ? 'Módulo ' + n : mod,
+            fecha: fechas.length === 1 ? fechas[0] : 'modulos',
+            fechaLabels
+          };
+        })
+        .filter((m) => m.people && m.people.length);
+      if (!metas.length) {
+        QB.export.toast('Sin personas con jarras por módulo', 'warn');
+        return;
+      }
+      await QB.export.modulosRatioPngZip(metas);
+    } catch (_) {
+      QB.export.toast('No se pudo generar ratios por módulo', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
+  }
+
   async function exportRatioImage(btn, chartId) {
     if (!QB.export || typeof QB.export.ratioChartImage !== 'function') {
       if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
@@ -1310,15 +1481,23 @@
     renderCompareSheetBar();
   }
 
+  function supervisorFechaIso(fecha) {
+    const raw =
+      fecha != null && String(fecha).trim() !== ''
+        ? String(fecha).trim()
+        : String(state.fecha || '').trim();
+    return fechaIsoKey(raw);
+  }
+
   function supervisorFullLabel(grupo, fecha) {
     if (!grupo || !QB.supervisors) return '';
-    const f = fecha != null ? fecha : state.fecha;
+    const f = supervisorFechaIso(fecha);
     return QB.supervisors.fullLabel(grupo, f) || QB.supervisors.label(grupo, f) || '';
   }
 
   function supervisorShortLabel(grupo, fecha) {
     if (!grupo || !QB.supervisors) return '';
-    const f = fecha != null ? fecha : state.fecha;
+    const f = supervisorFechaIso(fecha);
     return QB.supervisors.label(grupo, f) || supervisorFullLabel(grupo, f) || '';
   }
 
@@ -1422,10 +1601,7 @@
     days.forEach((d) => d.stats.forEach((s) => grupoKeys.add(s.grupo)));
     const licRows = [...grupoKeys]
       .map((grupo) => {
-        const sup =
-          (QB.supervisors && QB.supervisors.fullLabel(grupo, fechas[0])) ||
-          (QB.supervisors && QB.supervisors.label(grupo, fechas[0])) ||
-          '';
+        const sup = supervisorFullLabel(grupo, fechas[0]);
         const values = days.map((d) => {
           const hit = d.stats.find((s) => s.grupo === grupo);
           return hit
@@ -2513,6 +2689,12 @@
       if (btnExcelRatio) {
         btnExcelRatio.addEventListener('click', () => exportRatioExcel(btnExcelRatio));
       }
+      const btnImgRatioModulos = $('btnImgRatioModulos');
+      if (btnImgRatioModulos) {
+        btnImgRatioModulos.addEventListener('click', () =>
+          exportRatioModulosImage(btnImgRatioModulos)
+        );
+      }
       if (btnExcelRatioGt70) {
         btnExcelRatioGt70.addEventListener('click', () => exportRatioExcelGt70(btnExcelRatioGt70));
       }
@@ -2568,14 +2750,15 @@
       const btn = $(id);
       if (!btn) return;
       btn.addEventListener('click', () => {
-        const people = peopleOf(state.report).filter((r) => {
+        const all = peopleOf(state.report);
+        const people = all.filter((r) => {
           const c = Number(r.c || 0);
-          return mode === 'gt40' ? c >= COMPARE_GTE58 : c < COMPARE_LT40;
+          return mode === 'gt40' ? c >= COMPARE_LT40 : c < COMPARE_LT40;
         });
-        const fechaInfo = state.fecha ? fechaInfoFor(state.fecha) : null;
         QB.export.excelPeopleByJarras({
           mode,
           people,
+          totalPeople: all.length,
           fecha: state.fecha || '',
           fechaLabel: fechaLabelText(state.fecha)
         });
@@ -2583,6 +2766,20 @@
     };
     bindExcel('btnExcelLt40', 'lt40');
     bindExcel('btnExcelGt40', 'gt40');
+    const btnExcelRatioGrupos = $('btnExcelRatioGrupos');
+    if (btnExcelRatioGrupos) {
+      btnExcelRatioGrupos.addEventListener('click', () => exportGruposRatioExcel(btnExcelRatioGrupos));
+    }
+    const btnExcelPersonasDia = $('btnExcelPersonasDia');
+    if (btnExcelPersonasDia) {
+      btnExcelPersonasDia.addEventListener('click', () => exportPersonasDiaExcel(btnExcelPersonasDia));
+    }
+    const btnImgPersonasModulos = $('btnImgPersonasModulos');
+    if (btnImgPersonasModulos) {
+      btnImgPersonasModulos.addEventListener('click', () =>
+        exportPersonasModulosImage(btnImgPersonasModulos)
+      );
+    }
 
     const btnExportReportes = $('btnExportReportesPdf');
     if (btnExportReportes) {
@@ -2778,10 +2975,31 @@
       if (!key) continue;
       const cur = byCi.get(key);
       if (!cur) {
-        byCi.set(key, Object.assign({}, r, { c: r.c || 0, fechas: r.fecha ? [r.fecha] : [] }));
+        byCi.set(key, Object.assign({}, r, {
+          c: r.c || 0,
+          fechas: r.fecha ? [r.fecha] : [],
+          lotes: (r.lotes || []).map((l) => ({ lote: l.lote || l, c: Number(l.c) || 0 }))
+        }));
       } else {
         cur.c += r.c || 0;
         if (r.fecha && cur.fechas.indexOf(r.fecha) < 0) cur.fechas.push(r.fecha);
+        if (r.lotes && r.lotes.length) {
+          const map = new Map();
+          (cur.lotes || []).forEach((l) => {
+            const lk = String(l.lote || '');
+            if (!lk) return;
+            map.set(lk, (map.get(lk) || 0) + (Number(l.c) || 0));
+          });
+          r.lotes.forEach((l) => {
+            const lk = String(l.lote || l || '');
+            if (!lk) return;
+            map.set(lk, (map.get(lk) || 0) + (Number(l.c) || 0));
+          });
+          cur.lotes = [...map.entries()]
+            .map(([lote, c]) => ({ lote, c }))
+            .sort((a, b) => b.c - a.c)
+            .slice(0, 12);
+        }
         if ((r.c || 0) > (cur._bestC || 0)) {
           cur._bestC = r.c || 0;
           cur.grupo = r.grupo || cur.grupo;
@@ -2904,8 +3122,9 @@
     const k = (report && report.kpis) || {};
     const fechaInfo = state.fecha ? fechaInfoFor(state.fecha) : null;
     const fechaMain = fechaInfo ? fechaInfo.full : 'Sin fecha';
-    const fechaPickerLabel = fechaInfo ? (fechaInfo.fullLong || fechaInfo.full) : 'Sin fecha';
-    const fecha = fechaInfo ? (fechaInfo.fullLong || fechaInfo.full) : 'Sin fecha';
+    const fechaShort = fechaInfo ? (fechaInfo.full || fechaInfo.short) : 'Sin fecha';
+    const fechaLong = fechaInfo ? (fechaInfo.fullLong || fechaInfo.full) : 'Sin fecha';
+    const fecha = fechaLong;
     const people = peopleOf(report);
     const top = people[0];
     const topG = (k.porGrupo || [])[0];
@@ -2935,7 +3154,8 @@
             <span class="fecha-dd-ico" aria-hidden="true">${QB.icons.clock(16)}</span>
             <span class="fecha-dd-text">
               <span class="fecha-dd-kicker">Fecha de cosecha</span>
-              <span class="fecha-dd-value">${escapeHtml(fechaPickerLabel)}</span>
+              <span class="fecha-dd-value fecha-dd-value-long">${escapeHtml(fechaLong)}</span>
+              <span class="fecha-dd-value fecha-dd-value-short">${escapeHtml(fechaShort)}</span>
             </span>
             <span class="fecha-dd-chev" aria-hidden="true">${QB.icons.chevronRight(12)}</span>
           </button>
@@ -3155,7 +3375,7 @@
     const el = $('grupoMap');
     const meta = $('gruposMeta');
     if (!el) return;
-    const fecha = state.fecha || '';
+    const fecha = fechaIsoKey(state.fecha || '');
     let grupos = QB.charts.buildGrupoStats((report && report.data) || []);
     if (!grupos.length) {
       const k = (report && report.kpis) || {};
@@ -3199,12 +3419,15 @@
         const peopleN = Number(g.n) || 0;
         const jefe = QB.supervisors ? QB.supervisors.label(g.grupo, fecha) : '';
         const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(g.grupo, fecha) : '';
-        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="#${i + 1} · ${escapeAttr(shortGrupo(g.grupo))} · ${fmt(g.c)} jarras · ${peopleN} personas${jefeFull ? ` · Supervisor: ${escapeAttr(jefeFull)}` : ''} · toca para ver el equipo">
+        const ratio =
+          peopleN > 0 ? Number(g.c || 0) / peopleN : 0;
+        const ratioTxt = peopleN > 0 ? fmt(ratio) : '—';
+        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="#${i + 1} · ${escapeAttr(shortGrupo(g.grupo))} · ${fmt(g.c)} jarras · ${peopleN} personas · RATIO ${ratioTxt}${jefeFull ? ` · Supervisor: ${escapeAttr(jefeFull)}` : ''} · toca para ver el equipo">
           <span class="grupo-map-rank" title="Puesto #${i + 1} en jarras">${i + 1}</span>
           <span class="grupo-map-body">
             <span class="grupo-map-top">
               <strong title="${escapeAttr(g.grupo)}">${escapeHtml(shortGrupo(g.grupo))}</strong>
-              <em title="${fmt(g.c)} jarras en este grupo">${fmt(g.c)} jarras</em>
+              <em title="${fmt(g.c)} jarras en este grupo">${fmt(g.c)} jarras<span class="grupo-ratio" title="${fmt(g.c)} jarras ÷ ${peopleN} pers."> · RATIO: ${ratioTxt}</span></em>
             </span>
             <span class="grupo-map-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
             <span class="grupo-map-sub">${
@@ -3231,6 +3454,69 @@
     const people = peopleOf(state.report);
     const g = String(grupoKey || '');
     return people.filter((r) => String(r.grupo || '') === g);
+  }
+
+  function exportGruposRatioExcel(btn) {
+    if (!QB.export || typeof QB.export.excelGruposRatio !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const report = state.report;
+    if (!report) {
+      QB.export.toast('Sin datos del día', 'warn');
+      return;
+    }
+    const stats = QB.charts.buildGrupoStats((report && report.data) || []);
+    if (!stats.length) {
+      QB.export.toast('Sin grupos para exportar', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      const fecha = activeFechaIso();
+      const rows = stats.map((g) => {
+        const people = workersOfGrupo(g.grupo);
+        let lt30 = 0;
+        let gte30 = 0;
+        people.forEach((r) => {
+          const c = Number(r.c || 0);
+          if (c < 30) lt30 += 1;
+          else if (c > 0) gte30 += 1;
+        });
+        const cosechadores = Number(g.n) || people.length || 0;
+        const jarras = Number(g.c) || 0;
+        const ratio = cosechadores > 0 ? Math.round((jarras / cosechadores) * 100) / 100 : 0;
+        const jefe =
+          (QB.supervisors &&
+            (QB.supervisors.fullLabel(g.grupo, fecha) || QB.supervisors.label(g.grupo, fecha))) ||
+          '';
+        return {
+          grupo: shortGrupo(g.grupo),
+          grupoFull: g.grupo,
+          supervisor: jefe,
+          ratio,
+          jarras,
+          cosechadores,
+          lt30,
+          gte30
+        };
+      });
+      QB.export.excelGruposRatio({
+        rows,
+        fecha: state.fecha || fecha,
+        fechaLabel: fechaLabelText(state.fecha) || fecha
+      });
+    } catch (_) {
+      QB.export.toast('No se pudo armar el Ratio Excel', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
   }
 
   function buildGrupoExportMetas() {
@@ -3299,12 +3585,7 @@
   }
 
   function activeFechaIso() {
-    const f = String(state.fecha || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(f)) return f.slice(0, 10);
-    const fromLabel = fechaIsoFromLabel(fechaLabelText(f));
-    if (fromLabel) return fromLabel;
-    const p = (state.report && state.report.data && state.report.data[0]) || null;
-    return p && p.fecha ? String(p.fecha).slice(0, 10) : '';
+    return fechaIsoKey(state.fecha || '');
   }
 
   function lotesLabelForGrupo(people) {
@@ -3613,7 +3894,7 @@
       clearLabel: 'Cerrar',
       colMid: 'Grupo',
       rows: (k.porGrupo || []).slice(0, 40).map((g, i) => {
-        const jefe = QB.supervisors ? QB.supervisors.label(g.grupo) : '';
+        const jefe = supervisorShortLabel(g.grupo, state.fecha);
         return {
           key: g.grupo,
           rank: i + 1,
@@ -3663,8 +3944,8 @@
     const nLt40 = allTeam.filter((r) => Number(r.c || 0) < COMPARE_LT40).length;
     const nGte40 = allTeam.filter((r) => Number(r.c || 0) >= COMPARE_GTE58).length;
     const totalJarras = allTeam.reduce((s, r) => s + (r.c || 0), 0);
-    const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(grupoKey) : '';
-    const jefeShort = QB.supervisors ? QB.supervisors.label(grupoKey) : '';
+    const jefeFull = supervisorFullLabel(grupoKey);
+    const jefeShort = supervisorShortLabel(grupoKey);
     const filterChip = (id, label, count) => {
       const on = jarFilter === id ? ' is-active' : '';
       return `<button type="button" class="jar-filter-btn${on}" data-jar-filter="${id}" title="${escapeAttr(label)}">
@@ -4014,8 +4295,8 @@
       c: Math.round((b.c || 0) * 100) / 100
     }));
 
-    const jefe = QB.supervisors ? QB.supervisors.label(row.grupo) : '';
-    const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(row.grupo) : '';
+    const jefe = supervisorShortLabel(row.grupo);
+    const jefeFull = supervisorFullLabel(row.grupo);
 
     $('modalBody').innerHTML = `
       <div style="display:flex;gap:0.85rem;align-items:center;margin-bottom:0.85rem">
@@ -4124,6 +4405,131 @@
     const m = s.match(/L(\d+)\s*-\s*T(\d+)\s*-\s*M(\d+)/i);
     if (m) return `L${m[1]}·T${m[2]}·M${m[3]}`;
     return s.length > 14 ? s.slice(0, 13) + '…' : s;
+  }
+
+  /** L220-T9-M5 → M5 · o deja M5 si ya viene corto */
+  function shortModulo(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const m = s.match(/M\s*0*(\d+)/i);
+    if (m) return 'M' + m[1];
+    return '';
+  }
+
+  /** Módulos con jarras de la persona · L220-T9-M5 → M5 (solo si c > 0) */
+  function personModulos(row) {
+    const byMod = new Map();
+    (row && row.lotes ? row.lotes : []).forEach((l) => {
+      const c = Number(l && l.c) || 0;
+      if (c <= 0) return;
+      const mod = shortModulo(l && (l.lote || l));
+      if (!mod) return;
+      byMod.set(mod, (byMod.get(mod) || 0) + c);
+    });
+    /* Si no hay detalle de lotes, usa el módulo top solo si hay jarras */
+    if (!byMod.size && row && Number(row.c) > 0) {
+      const top = shortModulo(row.modulo);
+      if (top) byMod.set(top, Number(row.c) || 0);
+    }
+    return [...byMod.entries()]
+      .filter((e) => e[1] > 0)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map((e) => e[0]);
+  }
+
+  function exportPersonasDiaExcel(btn) {
+    if (!QB.export || typeof QB.export.excelPersonasDia !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const people = peopleOf(state.report);
+    if (!people.length) {
+      QB.export.toast('Sin personas para exportar', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      const enriched = people.map((r) => {
+        const iso = fechaIsoKey(state.fecha) || limaHoyIso();
+        return Object.assign({}, r, {
+          modulos: applyModuloFixTemporal(personModulos(r), r, iso)
+        });
+      });
+      QB.export.excelPersonasDia({
+        people: enriched,
+        fecha: state.fecha,
+        fechaLabel: fechaLabelText(state.fecha)
+      });
+    } catch (_) {
+      QB.export.toast('No se pudo armar el Excel', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
+  }
+
+  /** Imagen de ratios (barras) · una por módulo · día seleccionado */
+  async function exportPersonasModulosImage(btn) {
+    if (!QB.export || typeof QB.export.modulosRatioPngZip !== 'function') {
+      if (QB.export && QB.export.toast) QB.export.toast('Exportación no lista', 'warn');
+      return;
+    }
+    const people = peopleOf(state.report);
+    if (!people.length) {
+      QB.export.toast('Sin personas con jarras', 'warn');
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+    }
+    try {
+      const iso = fechaIsoKey(state.fecha) || limaHoyIso();
+      const byModulo = new Map();
+      people.forEach((r) => {
+        if (!(Number(r.c) > 0)) return;
+        const mods = personModulosJarras(r, iso);
+        mods.forEach((jarras, mod) => {
+          if (!(jarras > 0) || !mod) return;
+          if (!byModulo.has(mod)) byModulo.set(mod, []);
+          byModulo.get(mod).push(Object.assign({}, r, { c: jarras }));
+        });
+      });
+      const modNum = (m) => {
+        const x = String(m || '').match(/M\s*0*(\d+)/i);
+        return x ? Number(x[1]) : 0;
+      };
+      const fechaLabels = [fechaLegendDdMmYyyy(state.fecha) || fmtFecha(iso) || 'día'];
+      const metas = [...byModulo.entries()]
+        .sort((a, b) => modNum(b[0]) - modNum(a[0]) || a[0].localeCompare(b[0]))
+        .map(([mod, list]) => {
+          const n = modNum(mod);
+          return {
+            people: list,
+            moduloLabel: n ? 'Módulo ' + n : mod,
+            fecha: state.fecha || iso || 'dia',
+            fechaLabels
+          };
+        })
+        .filter((m) => m.people && m.people.length);
+      if (!metas.length) {
+        QB.export.toast('Sin personas con jarras por módulo', 'warn');
+        return;
+      }
+      await QB.export.modulosRatioPngZip(metas);
+    } catch (_) {
+      QB.export.toast('No se pudo generar ratios por módulo', 'warn');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+      }
+    }
   }
 
   function closeModal() {
@@ -4309,6 +4715,10 @@
   window.QB = window.QB || {};
   QB.appFecha = function () {
     return state.fecha || '';
+  };
+  QB.appFechaIso = function (key) {
+    const k = String(key || '').trim();
+    return fechaIsoKey(k || state.fecha || '');
   };
 
   boot().catch(function (err) {

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m333" />
+  <link rel="stylesheet" href="css/app.css?v=m355" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -293,11 +293,14 @@
             </div>
           </div>
           <div class="excel-actions" aria-label="Exportar Excel">
-            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Descargar Excel · personas con menos de 30 jarras">
-              Excel &lt; 40
+            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Excel · todas las personas del día con menos de 30 jarras">
+              Excel &lt; 30
             </button>
-            <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Descargar Excel · personas con más de 40 jarras">
-              Excel &gt; 40
+            <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Excel · el resto del día · 30 jarras o más">
+              Excel ≥ 30
+            </button>
+            <button type="button" class="btn btn-excel" id="btnExcelRatioGrupos" title="Excel · ratio por grupo · jarras, cosechadores, &lt;30 y ≥30">
+              Ratio Excel
             </button>
           </div>
         </div>
@@ -326,6 +329,14 @@
               <h2>Personas del día</h2>
               <p class="muted" id="workersMeta">Listado completo · busca por DNI o nombre</p>
             </div>
+          </div>
+          <div class="chart-actions">
+            <button type="button" class="btn btn-excel" id="btnExcelPersonasDia" title="Excel · todas las personas · jarras y módulos">
+              Excel personas
+            </button>
+            <button type="button" class="btn btn-excel is-img" id="btnImgPersonasModulos" title="Imagen PNG · ratios cosecha/día separados por módulo">
+              Imagen módulos
+            </button>
           </div>
         </div>
         <div class="workers-search">
@@ -369,6 +380,9 @@
               <div class="ratio-sheet-exports">
                 <button type="button" class="btn btn-excel ratio-excel-btn" id="btnExcelRatio" title="Exportar Excel · personas según las fechas seleccionadas">
                   Excel ratios
+                </button>
+                <button type="button" class="btn btn-excel is-img ratio-img-btn" id="btnImgRatioModulos" title="Imagen PNG · ratios cosecha/día separados por módulo">
+                  Imagen módulos
                 </button>
                 <button type="button" class="btn btn-excel is-img ratio-img-btn" id="btnImgRatio" title="Generar imagen PNG · con leyenda de la fecha filtrada">
                   Generar imagen
@@ -494,17 +508,17 @@
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m333"></script>
-  <script src="js/workers.js?v=m333"></script>
-  <script src="js/api.js?v=m333"></script>
-  <script src="js/icons.js?v=m333"></script>
-  <script src="js/avatars.js?v=m333"></script>
-  <script src="js/supervisors.js?v=m333"></script>
-  <script src="js/descartes.js?v=m333"></script>
-  <script src="js/charts.js?v=m333"></script>
-  <script src="js/select.js?v=m333"></script>
-  <script src="js/export.js?v=m333"></script>
-  <script src="js/app.js?v=m333"></script>
+  <script src="js/config.js?v=m355"></script>
+  <script src="js/workers.js?v=m355"></script>
+  <script src="js/api.js?v=m355"></script>
+  <script src="js/icons.js?v=m355"></script>
+  <script src="js/avatars.js?v=m355"></script>
+  <script src="js/supervisors.js?v=m355"></script>
+  <script src="js/descartes.js?v=m355"></script>
+  <script src="js/charts.js?v=m355"></script>
+  <script src="js/select.js?v=m355"></script>
+  <script src="js/export.js?v=m355"></script>
+  <script src="js/app.js?v=m355"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

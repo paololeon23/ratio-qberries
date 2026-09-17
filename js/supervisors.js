@@ -262,6 +262,25 @@ QB.supervisors = {
     { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-09-14' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-09-14' },
 
+    /* —— 2026-09-16 (17 asignaciones · padrón del día) —— */
+    { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-16' },
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-16' },
+    { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 06', fecha: '2026-09-16' },
+    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-09-16' },
+    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-09-16' },
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-09-16' },
+    { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 17', fecha: '2026-09-16' },
+    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 18', fecha: '2026-09-16' },
+    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-09-16' },
+    { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-09-16' },
+    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-09-16' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-09-16' },
+    { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-09-16' },
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-09-16' },
+    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-09-16' },
+    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-09-16' },
+    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 52', fecha: '2026-09-16' },
+
     /* —— Bajas / sin LIC (historial · no lookup) —— */
     { nombre: 'VASQUEZ DELGADO ROBERTO CARLOS', dni: '42493820', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
     { nombre: 'VASQUEZ URBINA EDIN CLAY', dni: '44141396', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
@@ -391,10 +410,36 @@ QB.supervisors = {
     return this.supervisorDniSet().has(d);
   },
 
+  /** Extrae YYYY-MM-DD de ISO o de DD/MM/YYYY (planilla). */
+  toIso(fecha) {
+    const s = String(fecha || '').trim();
+    if (!s) return '';
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if (m) {
+      return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+    }
+    return '';
+  },
+
   _resolveFecha(fecha) {
-    const f = String(fecha || '').trim();
-    if (f) return f;
-    if (window.QB && typeof QB.appFecha === 'function') return String(QB.appFecha() || '').trim();
+    const raw = String(fecha || '').trim();
+    if (window.QB && typeof QB.appFechaIso === 'function') {
+      const iso = String(QB.appFechaIso(raw) || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+    }
+    const fromRaw = this.toIso(raw);
+    if (fromRaw) return fromRaw;
+    if (raw) return '';
+    if (window.QB && typeof QB.appFecha === 'function') {
+      const f = String(QB.appFecha() || '').trim();
+      if (window.QB && typeof QB.appFechaIso === 'function') {
+        const iso = String(QB.appFechaIso(f) || '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+      }
+      return this.toIso(f);
+    }
     return '';
   },
 
@@ -403,7 +448,7 @@ QB.supervisors = {
     const fechas = new Set();
     this.rows.forEach((r) => {
       if (!this.isActive(r)) return;
-      const fecha = String(r.fecha || '').trim();
+      const fecha = this.toIso(r.fecha) || String(r.fecha || '').trim();
       const key = this.licKey(r.lic);
       if (!fecha || !key || /NO TENGO/i.test(r.lic)) return;
       const dni = this.normDni(r.dni);
@@ -464,11 +509,13 @@ QB.supervisors = {
     const lic = this.licKey(grupo);
     if (!lic) return null;
     const f = this._resolveFecha(fecha);
-    if (f && this._byLicByFecha[f] && this._byLicByFecha[f][lic]) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return null;
+    if (this._byLicByFecha[f] && this._byLicByFecha[f][lic]) {
       return this._byLicByFecha[f][lic];
     }
     for (let i = 0; i < (this._fechasOrd || []).length; i++) {
       const fd = this._fechasOrd[i];
+      if (fd > f) continue;
       if (this._byLicByFecha[fd] && this._byLicByFecha[fd][lic]) {
         return this._byLicByFecha[fd][lic];
       }

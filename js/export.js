@@ -40,31 +40,462 @@ QB.export = {
     }
   },
 
-  chartImage(chartId, filename) {
-    const chart = QB.charts.instances[chartId];
-    if (!chart) {
-      this.toast('Gráfico no listo', 'warn');
+  _loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  },
+
+  async _cupImg(tone, size) {
+    const ico = (window.QB && QB.icons) || {};
+    const s = size || 48;
+    const svg =
+      tone === 'gold'
+        ? ico.cupGold && ico.cupGold(s)
+        : tone === 'silver'
+          ? ico.cupSilver && ico.cupSilver(s)
+          : ico.cupBronze && ico.cupBronze(s);
+    if (!svg) return null;
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    try {
+      return await this._loadImage(url);
+    } catch (_) {
+      return null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+
+  _drawCupIcon(ctx, cx, cy, tone, scale) {
+    const s = scale || 1;
+    const fill = tone === 'gold' ? '#f5c542' : tone === 'silver' ? '#c5ced8' : '#d4894a';
+    const dark = tone === 'gold' ? '#9a7208' : tone === 'silver' ? '#5a6570' : '#8a4b18';
+    const shine = tone === 'gold' ? '#fff3c4' : tone === 'silver' ? '#ffffff' : '#ffe3c4';
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    /* Cuerpo (igual forma que SVG cupChamp) */
+    const g = ctx.createLinearGradient(0, -16, 0, 10);
+    g.addColorStop(0, shine);
+    g.addColorStop(0.45, fill);
+    g.addColorStop(1, dark);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-10, -16);
+    ctx.lineTo(10, -16);
+    ctx.lineTo(10, -4);
+    ctx.quadraticCurveTo(10, 8, 0, 10);
+    ctx.quadraticCurveTo(-10, 8, -10, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-10, -12);
+    ctx.arc(-10, -5.5, 5.5, -Math.PI * 0.55, Math.PI * 0.55, true);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(10, -12);
+    ctx.arc(10, -5.5, 5.5, Math.PI * 1.55, Math.PI * 0.45, false);
+    ctx.stroke();
+    ctx.fillStyle = dark;
+    ctx.fillRect(-2.2, 10, 4.4, 7);
+    ctx.beginPath();
+    ctx.moveTo(-9, 21);
+    ctx.lineTo(9, 21);
+    ctx.lineTo(6.5, 17);
+    ctx.lineTo(-6.5, 17);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.ellipse(0, 21.5, 9, 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (tone === 'gold') {
+      ctx.fillStyle = shine;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(0, -13);
+      ctx.lineTo(1.8, -8.5);
+      ctx.lineTo(6.2, -8);
+      ctx.lineTo(2.7, -5);
+      ctx.lineTo(3.8, -0.6);
+      ctx.lineTo(0, -3);
+      ctx.lineTo(-3.8, -0.6);
+      ctx.lineTo(-2.7, -5);
+      ctx.lineTo(-6.2, -8);
+      ctx.lineTo(-1.8, -8.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  },
+
+  /** Persona suave (header Ratio) — tonos apagados */
+  _drawPersonSoft(ctx, cx, cy, scale) {
+    const s = scale || 1;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    ctx.fillStyle = '#8a9a90';
+    ctx.beginPath();
+    ctx.arc(0, -3.2, 3.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-5.8, 7.2);
+    ctx.quadraticCurveTo(-5.4, 1.2, 0, 1.2);
+    ctx.quadraticCurveTo(5.4, 1.2, 5.8, 7.2);
+    ctx.quadraticCurveTo(5.6, 8.2, 4.2, 8.2);
+    ctx.lineTo(-4.2, 8.2);
+    ctx.quadraticCurveTo(-5.6, 8.2, -5.8, 7.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  },
+
+  /** Arándano suave (header kg) — azul-gris discreto */
+  _drawBlueberrySoft(ctx, cx, cy, scale) {
+    const s = scale || 1;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    const g = ctx.createRadialGradient(-2, -2.5, 1, 0, 0.5, 7);
+    g.addColorStop(0, '#a8b4c4');
+    g.addColorStop(0.7, '#7a889c');
+    g.addColorStop(1, '#667484');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 1, 6.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(208,214,222,0.45)';
+    ctx.beginPath();
+    ctx.arc(-2, -1.2, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7a8578';
+    ctx.beginPath();
+    ctx.ellipse(-0.6, -6.2, 1.6, 1.1, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#6a7568';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0.2, -6.6);
+    ctx.quadraticCurveTo(2.2, -5.8, 2.8, -4.2);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  async _tableChartPng(chartId) {
+    const root = document.getElementById(chartId);
+    const table = root && root.querySelector('.sup-rank-table');
+    if (!table) return null;
+
+    const fechaIso =
+      (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
+      (window.QB && QB.appFecha && QB.appFecha()) ||
+      '';
+    let fechaTxt = String(fechaIso || '').trim();
+    const m = fechaTxt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) fechaTxt = m[3] + '/' + m[2] + '/' + m[1];
+
+    if (!table.querySelectorAll('tbody tr').length) return null;
+    /* Canvas fiable con copas SVG del frontend (sin foreignObject que rompe la descarga) */
+    return this._tableChartPngFallback(chartId, fechaTxt);
+  },
+
+  async _tableChartPngFallback(chartId, fechaTxt) {
+    const root = document.getElementById(chartId);
+    const table = root && root.querySelector('.sup-rank-table');
+    if (!table) return null;
+    const rows = Array.prototype.map.call(table.querySelectorAll('tbody tr'), (tr) => {
+      const tds = tr.querySelectorAll('td');
+      const nameEl = tds[1] && tds[1].querySelector('strong');
+      const licEl = tds[1] && tds[1].querySelector('.sup-rank-lic');
+      const bestEl = tds[2] && tds[2].querySelector('.sup-best-name');
+      const hasBestCol = tds.length >= 6;
+      return {
+        name: nameEl ? String(nameEl.textContent || '').trim() : '',
+        lic: licEl ? String(licEl.textContent || '').trim() : '',
+        best: hasBestCol
+          ? bestEl
+            ? String(bestEl.textContent || '').trim()
+            : String((tds[2] && tds[2].innerText) || '').trim()
+          : '',
+        jarras: String((tds[hasBestCol ? 3 : 2] && tds[hasBestCol ? 3 : 2].innerText) || '').trim(),
+        kg: String((tds[hasBestCol ? 4 : 3] && tds[hasBestCol ? 4 : 3].innerText) || '').trim(),
+        ratio: String((tds[hasBestCol ? 5 : 4] && tds[hasBestCol ? 5 : 4].innerText) || '').trim(),
+        medal: tr.classList.contains('is-gold')
+          ? 'gold'
+          : tr.classList.contains('is-silver')
+            ? 'silver'
+            : tr.classList.contains('is-bronze')
+              ? 'bronze'
+              : ''
+      };
+    });
+    if (!rows.length) return null;
+
+    const cupGold = await this._cupImg('gold', 56);
+    const cupSilver = await this._cupImg('silver', 48);
+    const cupBronze = await this._cupImg('bronze', 48);
+    const cups = { gold: cupGold, silver: cupSilver, bronze: cupBronze };
+
+    const scale = 2;
+    const W = 1280;
+    const pad = 36;
+    const rowH = 46;
+    const headH = 92;
+    const footH = 52;
+    const H = headH + 34 + rows.length * rowH + footH;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+
+    function drawCup(tone, cx, cy, size) {
+      const img = cups[tone];
+      if (img) {
+        ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+      } else {
+        this._drawCupIcon(ctx, cx, cy, tone, size / 36);
+      }
+    }
+
+    function drawCrown(cx, cy, s) {
+      const sc = s || 1;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(sc, sc);
+      ctx.strokeStyle = '#c9a227';
+      ctx.fillStyle = '#c9a227';
+      ctx.lineWidth = 1.4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-7.5, 4.5);
+      ctx.lineTo(-5.5, -5);
+      ctx.lineTo(-1.7, -0.8);
+      ctx.lineTo(0, -6.5);
+      ctx.lineTo(1.7, -0.8);
+      ctx.lineTo(5.5, -5);
+      ctx.lineTo(7.5, 4.5);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-6.5, 7.5);
+      ctx.lineTo(6.5, 7.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.fillStyle = '#4ab848';
+    ctx.fillRect(0, 0, W, 8);
+    ctx.fillStyle = '#143525';
+    ctx.font = '800 26px "Outfit", "IBM Plex Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Todos los supervisores', pad, 46);
+    ctx.fillStyle = '#5b6b63';
+    ctx.font = '600 14px "IBM Plex Sans", "Segoe UI", sans-serif';
+    const variedad = String((root && root.getAttribute('data-variedad')) || '').trim();
+    ctx.fillText(
+      (fechaTxt ? fechaTxt + ' · ' : '') +
+        (variedad ? variedad + ' · ' : '') +
+        rows.length +
+        ' supervisores · mejor cosechador · jarras · kg · ratio',
+      pad,
+      72
+    );
+
+    let y = headH;
+
+    const cols = [
+      { key: 'place', label: 'COPA', x: pad, w: 72, align: 'center' },
+      { key: 'name', label: 'SUPERVISOR', x: pad + 72, w: 300, align: 'left' },
+      { key: 'best', label: 'MEJOR COSECHADOR', x: pad + 372, w: 300, align: 'left', icon: 'crown' },
+      { key: 'jarras', label: 'JARRAS', x: pad + 672, w: 140, align: 'center' },
+      { key: 'kg', label: 'KG', x: pad + 812, w: 140, align: 'center', icon: 'blueberry' },
+      { key: 'ratio', label: 'RATIO', x: pad + 952, w: 140, align: 'center', icon: 'person' }
+    ];
+    const tableW = W - pad * 2;
+    const tableTop = y;
+    ctx.fillStyle = '#f4f8f5';
+    ctx.fillRect(pad, y, tableW, 34);
+    ctx.fillStyle = '#4a5c52';
+    ctx.font = '750 11px "IBM Plex Sans", "Segoe UI", sans-serif';
+    cols.forEach((c) => {
+      const labelW = ctx.measureText(c.label).width;
+      const iconGap = 5;
+      const iconR = 7;
+      let textX = c.align === 'left' ? c.x + 8 : c.x + c.w / 2;
+      if (c.icon) {
+        if (c.align === 'left') {
+          drawCrown(c.x + 14, y + 16, 0.85);
+          textX = c.x + 26;
+          ctx.fillStyle = '#4a5c52';
+          ctx.font = '750 11px "IBM Plex Sans", "Segoe UI", sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(c.label, textX, y + 22);
       return;
     }
+        const blockW = iconR * 2 + iconGap + labelW;
+        const left = c.x + (c.w - blockW) / 2;
+        const iconX = left + iconR;
+        textX = left + iconR * 2 + iconGap + labelW / 2;
+        if (c.icon === 'blueberry') this._drawBlueberrySoft(ctx, iconX, y + 16, 0.85);
+        else if (c.icon === 'person') this._drawPersonSoft(ctx, iconX, y + 16, 0.9);
+        else if (c.icon === 'crown') drawCrown(iconX, y + 16, 0.85);
+        ctx.fillStyle = '#4a5c52';
+        ctx.font = '750 11px "IBM Plex Sans", "Segoe UI", sans-serif';
+      }
+      ctx.textAlign = 'center';
+      if (c.align === 'left' && !c.icon) {
+        ctx.textAlign = 'left';
+        ctx.fillText(c.label, c.x + 8, y + 22);
+      } else {
+        ctx.fillText(c.label, textX, y + 22);
+      }
+    });
+    y += 34;
+
+    const self = this;
+    rows.forEach((r, i) => {
+      if (r.medal === 'gold') ctx.fillStyle = '#fff6d6';
+      else if (r.medal === 'silver') ctx.fillStyle = '#f3f6f9';
+      else if (r.medal === 'bronze') ctx.fillStyle = '#fff3e6';
+      else ctx.fillStyle = i % 2 ? '#fbfcfb' : '#ffffff';
+      ctx.fillRect(pad, y, tableW, rowH);
+
+      const cx = cols[0].x + cols[0].w / 2;
+      const cy = y + rowH / 2;
+      if (r.medal === 'gold' || r.medal === 'silver' || r.medal === 'bronze') {
+        drawCup.call(self, r.medal, cx, cy, r.medal === 'gold' ? 30 : 26);
+      } else {
+        ctx.fillStyle = '#143525';
+        ctx.font = '800 14px "Outfit", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(i + 1), cx, y + 29);
+      }
+
+      ctx.fillStyle = '#143525';
+      ctx.font = '700 13px "IBM Plex Sans", "Segoe UI", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(r.name || '—', cols[1].x + 8, y + 20);
+      ctx.fillStyle = '#6b7c72';
+      ctx.font = '650 11px "IBM Plex Sans", "Segoe UI", sans-serif';
+      ctx.fillText(r.lic || '', cols[1].x + 8, y + 36);
+
+      const bestTxt = r.best && r.best !== '—' ? r.best : '—';
+      if (bestTxt !== '—') {
+        drawCrown(cols[2].x + 14, y + 23, 0.8);
+        ctx.fillStyle = '#143525';
+        ctx.font = '650 12px "IBM Plex Sans", "Segoe UI", sans-serif';
+        ctx.textAlign = 'left';
+        let shown = bestTxt;
+        while (shown.length > 4 && ctx.measureText(shown).width > cols[2].w - 36) {
+          shown = shown.slice(0, -1);
+        }
+        if (shown !== bestTxt) shown = shown.replace(/\s+\S*$/, '') + '…';
+        ctx.fillText(shown, cols[2].x + 26, y + 27);
+      } else {
+        ctx.fillStyle = '#9aa6a0';
+        ctx.font = '650 12px "IBM Plex Sans", "Segoe UI", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('—', cols[2].x + 8, y + 27);
+      }
+
+      ctx.fillStyle = '#143525';
+      ctx.font = '750 14px "IBM Plex Sans", "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(r.jarras, cols[3].x + cols[3].w / 2, y + 29);
+      ctx.fillText(r.kg, cols[4].x + cols[4].w / 2, y + 29);
+      ctx.fillText(r.ratio, cols[5].x + cols[5].w / 2, y + 29);
+      y += rowH;
+    });
+
+    ctx.strokeStyle = '#e8eee9';
+    ctx.strokeRect(pad, tableTop, tableW, 34 + rows.length * rowH);
+    y += 22;
+    ctx.fillStyle = '#6b7785';
+    ctx.font = '500 12px "IBM Plex Sans", "Segoe UI", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Q Berries · Solo autorizado para la empresa', pad, y);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) return null;
+    const varSlug = String((root && root.getAttribute('data-variedad')) || '').trim();
+    const slug = String((fechaTxt || 'dia') + (varSlug ? '_' + varSlug : '')).replace(/[^\w\-]+/g, '_');
+    return { blob, filename: 'QBerries_supervisores_' + slug + '.png' };
+  },
+  async chartImage(chartId, filename) {
+    try {
+      /* Tabla HTML de supervisores: siempre esta ruta (no ECharts) */
+      if (document.querySelector('#' + chartId + ' .sup-rank-table')) {
+        const pack = await this._tableChartPng(chartId);
+        if (!pack || !pack.blob) {
+          this.toast('No se pudo generar la imagen', 'warn');
+      return;
+    }
+        const stamp = Date.now().toString(36).slice(-4);
+        const fname = (pack.filename || filename || chartId + '.png').replace(
+          /\.png$/i,
+          '_' + stamp + '.png'
+        );
+        this._downloadBlob(pack.blob, fname);
+        this.toast('Imagen lista');
+        return pack;
+      }
+      const chart = QB.charts.instances[chartId];
+      if (chart && typeof chart.getDataURL === 'function') {
     const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename || `${chartId}.png`;
+        a.download = filename || chartId + '.png';
+        document.body.appendChild(a);
     a.click();
+        a.remove();
     this.toast('Imagen del gráfico lista');
     return url;
+      }
+      this.toast('Gráfico no listo', 'warn');
+    } catch (err) {
+      console.error('chartImage', err);
+      this.toast('Error al descargar imagen', 'warn');
+    }
   },
 
   async shareChart(chartId, title) {
+    try {
+      let blob = null;
+      let fname = (title || chartId) + '.png';
+      if (document.querySelector('#' + chartId + ' .sup-rank-table')) {
+        const pack = await this._tableChartPng(chartId);
+        if (pack) {
+          blob = pack.blob;
+          fname = pack.filename;
+        }
+      } else {
     const chart = QB.charts.instances[chartId];
-    if (!chart) {
+        if (chart && typeof chart.getDataURL === 'function') {
+          const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
+          blob = await (await fetch(url)).blob();
+        }
+      }
+      if (!blob) {
       this.toast('Gráfico no listo', 'warn');
       return;
     }
-    const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
     try {
-      const blob = await (await fetch(url)).blob();
-      const file = new File([blob], `${title || chartId}.png`, { type: 'image/png' });
+        const file = new File([blob], fname, { type: 'image/png' });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: title || 'Rendimientos Q Berries',
@@ -75,7 +506,12 @@ QB.export = {
         return;
       }
     } catch (_) {}
-    this.chartImage(chartId, `${title || chartId}.png`);
+      this._downloadBlob(blob, fname);
+      this.toast('Imagen lista');
+    } catch (err) {
+      console.error('shareChart', err);
+      this.toast('Error al compartir', 'warn');
+    }
   },
 
   async reportPdf(meta) {
@@ -116,7 +552,6 @@ QB.export = {
       'chartTopLotes',
       'chartTopLic',
       'chartLiderazgo',
-      'chartPeoresLic',
       'chartDist'
     ];
     for (const id of chartIds) {
@@ -2235,8 +2670,8 @@ QB.export = {
     }
 
     const header = multi
-      ? ['Fecha', 'CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras']
-      : ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras'];
+      ? ['Fecha', 'CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Rango']
+      : ['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Rango'];
     modCols.forEach((m) => {
       const n = modNum(m);
       header.push(n ? 'Módulo ' + n : m);
@@ -2253,14 +2688,16 @@ QB.export = {
             nombreDe(r),
             shortGrupo(r.grupo),
             jefeDe(r.grupo, r.fechaIso || meta.fecha),
-            Number(r.c || 0)
+            Number(r.c || 0),
+            this._ratioBinLabel(r.c)
           ]
         : [
             String(r.ci || ''),
             nombreDe(r),
             shortGrupo(r.grupo),
             jefeDe(r.grupo, meta.fecha),
-            Number(r.c || 0)
+            Number(r.c || 0),
+            this._ratioBinLabel(r.c)
           ];
       modCols.forEach((m) => row.push(has.has(m) ? m : ''));
       rows.push(row);
@@ -2297,10 +2734,11 @@ QB.export = {
         'Grupo LIC',
         'Supervisor',
         'Ratio',
+        'Jarras - Ratio',
         'Cantidad jarras',
         'Cantidad cosechadores',
-        'Personas <30 jarras',
-        'Personas ≥30 jarras',
+        'Personas ≤30 jarras',
+        'Personas ≥31 jarras',
         'Fecha'
       ]
     ];
@@ -2309,6 +2747,7 @@ QB.export = {
         String(r.grupo || r.grupoFull || ''),
         String(r.supervisor || ''),
         Number(r.ratio || 0),
+        String(r.formula || ''),
         Number(r.jarras || 0),
         Number(r.cosechadores || 0),
         Number(r.lt30 || 0),
@@ -2328,14 +2767,15 @@ QB.export = {
   },
 
   /**
-   * Excel .xlsx · corte del día completo (todos los LIC)
-   * meta: { mode: 'lt40'|'gt40', people[], totalPeople, fecha, fechaLabel }
-   * lt40 = menos de 30 · gt40 = 30 o más (complemento: juntos = total del día)
+   * Excel .xlsx · corte del día seleccionado (todos los LIC de esa fecha)
+   * meta: { mode: 'lt40'|'gt40', cut, people[], totalPeople, fecha, fechaLabel }
+   * lt = 1 a cut (incluye cut, igual que las barras) · gt = cut+1 o más
    */
   excelPeopleByJarras(meta) {
     meta = meta || {};
     const mode = meta.mode === 'gt40' ? 'gt40' : 'lt40';
     const isHigh = mode === 'gt40';
+    const cut = Number(meta.cut) > 0 ? Number(meta.cut) : 30;
     const people = [...(meta.people || [])].sort((a, b) => (b.c || 0) - (a.c || 0));
     if (!people.length) {
       this.toast('Sin personas para este Excel', 'warn');
@@ -2356,8 +2796,10 @@ QB.export = {
     const nThis = people.length;
     const nTotal = Number(meta.totalPeople || 0) || nThis;
     const nOther = Math.max(0, nTotal - nThis);
-    const thisLabel = isHigh ? '30 o más jarras' : 'menos de 30 jarras';
-    const otherLabel = isHigh ? 'menos de 30 jarras' : '30 o más jarras';
+    const lowLabel = '1 a ' + cut + ' jarras';
+    const highLabel = cut + 1 + ' o más jarras';
+    const thisLabel = isHigh ? highLabel : lowLabel;
+    const otherLabel = isHigh ? lowLabel : highLabel;
 
     const rows = [['CI', 'Nombre', 'Grupo LIC', 'Supervisor', 'Jarras', 'Fecha']];
     people.forEach((r) => {
@@ -2381,14 +2823,14 @@ QB.export = {
     ];
 
     const bytes = this._xlsxFromSheets([
-      { name: isHigh ? '30 o mas' : 'menos de 30', rows },
+      { name: isHigh ? cut + 1 + ' o mas' : '1 a ' + cut, rows },
       { name: 'Resumen', rows: resumen }
     ]);
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
-    const fechaSlug = String(meta.fecha || 'dia').replace(/\s+/g, '_');
-    const tag = isHigh ? '30_o_mas' : 'menos_de_30';
+    const fechaSlug = String(meta.fecha || 'dia').replace(/[^\d-]/g, '_');
+    const tag = isHigh ? cut + 1 + '_o_mas' : '1_a_' + cut;
     const filename = 'QBerries_' + tag + '_jarras_' + fechaSlug + '.xlsx';
 
     this._downloadBlob(blob, filename);

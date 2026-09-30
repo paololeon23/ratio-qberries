@@ -1,0 +1,31 @@
+---
+description: Al subir Excel en historial-in, cargar sola la última hoja al historial
+alwaysApply: true
+---
+
+# Historial Excel · carga automática
+
+Cuando el usuario deja, reemplaza o menciona un Excel en `historial-in/` (p. ej. `SEMANA ….xlsx`), **no preguntar**: cargar de inmediato.
+
+## Qué hacer (obligatorio, sin pedir confirmación)
+
+1. Comparar fecha de modificación del `.xlsx` más reciente en `historial-in\Licapa I` o `historial-in\Licapa II` con `js/historial-data.js`.
+2. Si el Excel es más nuevo, o el usuario dice que subió/reemplazó una hoja, correr:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\cargar-historial.ps1
+   ```
+3. El script **solo lee la última hoja** del Excel (día más reciente). No hace falta elegir hoja.
+4. Confirmar en la salida la fecha cargada (ej. `2026-09-23`) y la versión de caché (`m###`).
+5. Responder breve: fecha lista + recargar app.
+
+## No hacer
+
+- No pedir que el usuario corra el script.
+- No inventar fechas: solo las que salgan del Excel/script.
+- No re-procesar si `historial-data.js` ya es más nuevo que el Excel y la última fecha ya está en `dias`.
+
+## Context
+
+- Fuente: `historial-in\Licapa I\*.xlsx` (Sekoya Pop · Licapa I y Licapa III) y `historial-in\Licapa II\*.xlsx` (Magica · Licapa II y Licapa III). Son Excels distintos. El script lee la carpeta y no los mezcla.
+- Destino: `js/historial-data.js` (+ `js/historial.json`, bump caché PWA)
+- Script: `scripts/cargar-historial.ps1`

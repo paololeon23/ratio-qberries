@@ -222,7 +222,28 @@ QB.charts = {
   },
 
   resizeAll() {
-    Object.values(this.instances).forEach((c) => c && c.resize());
+    const lic = document.getElementById('chartTopLic');
+    if (lic && this._topLicCount) this._fitTopLicWidth(lic, this._topLicCount);
+    Object.values(this.instances).forEach((c) => c && !c.isDisposed() && c.resize());
+  },
+
+  /** Ancho real del panel. Si hay muchos LIC, el gráfico crece y el panel se desplaza. */
+  _fitTopLicWidth(el, n) {
+    const panel = el.closest('.chart-panel') || el.parentElement;
+    const avail = Math.max(0, (panel && panel.clientWidth) || 0);
+    const mobile = this.isMobile();
+    const barSlot = mobile ? 54 : 72;
+    const pad = 28;
+    const inner = Math.max(280, avail - pad);
+    const count = Math.max(1, n || 1);
+    const need = Math.max(inner, count * barSlot);
+    el.style.boxSizing = 'border-box';
+    el.style.width = need + 'px';
+    el.style.minWidth = need + 'px';
+    el.style.maxWidth = 'none';
+    el.style.height = (mobile ? 440 : 500) + 'px';
+    el.style.minHeight = el.style.height;
+    return { avail, need };
   },
 
   dispose(id) {
@@ -277,14 +298,37 @@ QB.charts = {
   /** Estadísticas por grupo: jarras, personas, promedio */
   buildGrupoStats(rows) {
     const map = {};
+    const hidden = window.QB && QB.supervisors && QB.supervisors.isHiddenLic;
+    const isJefe = (ci) =>
+      window.QB && QB.supervisors && QB.supervisors.isSupervisorDni && QB.supervisors.isSupervisorDni(ci);
     for (const r of rows || []) {
+      if (hidden && QB.supervisors.isHiddenLic(r.grupo)) continue;
       const g = String(r.grupo || '').trim() || '(sin grupo)';
-      if (!map[g]) map[g] = { grupo: g, c: 0, workers: {} };
+      if (!map[g]) map[g] = { grupo: g, c: 0, workers: {}, pickers: {} };
       map[g].c += Number(r.c) || 0;
-      const ci = String(r.ci || '');
+      const ciRaw = String(r.ci || '');
+      const ci =
+        (window.QB && QB.workers && QB.workers.cleanCi && QB.workers.cleanCi(ciRaw)) || ciRaw;
       if (ci) {
         if (!map[g].workers[ci]) map[g].workers[ci] = 0;
         map[g].workers[ci] += Number(r.c) || 0;
+        if (!isJefe(ci) && !isJefe(ciRaw)) {
+          if (!map[g].pickers[ci]) {
+            map[g].pickers[ci] = {
+              c: 0,
+              ci,
+              nombre: r.nombre || '',
+              apellido: r.apellido || '',
+              nombreCompleto: r.nombreCompleto || ''
+            };
+          }
+          map[g].pickers[ci].c += Number(r.c) || 0;
+          if (!map[g].pickers[ci].nombreCompleto && r.nombreCompleto) {
+            map[g].pickers[ci].nombreCompleto = r.nombreCompleto;
+            map[g].pickers[ci].nombre = r.nombre || map[g].pickers[ci].nombre;
+            map[g].pickers[ci].apellido = r.apellido || map[g].pickers[ci].apellido;
+          }
+        }
       }
     }
     return Object.keys(map)
@@ -292,11 +336,21 @@ QB.charts = {
         const g = map[k];
         const n = Object.keys(g.workers).length;
         const c = Math.round(g.c * 100) / 100;
+        let best = null;
+        Object.keys(g.pickers).forEach((ci) => {
+          const p = g.pickers[ci];
+          if (!best || p.c > best.c) best = p;
+        });
         return {
           grupo: g.grupo,
           c,
           n,
-          avg: n ? Math.round((c / n) * 100) / 100 : 0
+          avg: n ? Math.round((c / n) * 100) / 100 : 0,
+          bestCi: best ? best.ci : '',
+          bestC: best ? Math.round(best.c * 100) / 100 : 0,
+          bestNombre: best ? best.nombre || '' : '',
+          bestApellido: best ? best.apellido || '' : '',
+          bestNombreCompleto: best ? best.nombreCompleto || '' : ''
         };
       })
       .sort((a, b) => b.c - a.c);
@@ -2096,11 +2150,6 @@ QB.charts = {
     requestAnimationFrame(() => chart.resize());
   },
 
-  /** @deprecated usar renderModalDetalle */
-  renderModalHoras(porHora) {
-    this.renderModalDetalle(porHora);
-  },
-
   /** —— Paneles del día · supervisores + lotes —— */
 
   buildSupervisorStats(porGrupo) {
@@ -2114,6 +2163,43 @@ QB.charts = {
         const short =
           (window.QB && QB.supervisors && QB.supervisors.label(g.grupo, fecha)) ||
           this.shortGrupo(g.grupo);
+        const bestCi = String(g.bestCi || '');
+        let bestNombre = '';
+        if (bestCi) {
+          const row = {
+            ci: bestCi,
+            nombre: g.bestNombre || '',
+            apellido: g.bestApellido || '',
+            nombreCompleto: g.bestNombreCompleto || ''
+          };
+          /* Completar desde padrón trabajadores.json si la fila no trae nombre */
+          if (
+            (!row.nombreCompleto || (QB.avatars && QB.avatars._junk && QB.avatars._junk(row.nombreCompleto))) &&
+            window.QB &&
+            QB.workers &&
+            typeof QB.workers.get === 'function'
+          ) {
+            const w = QB.workers.get(bestCi);
+            if (w && w.nombreCompleto) {
+              row.nombreCompleto = w.nombreCompleto;
+              if (typeof QB.workers.enrich === 'function') {
+                const en = QB.workers.enrich({ ci: bestCi, c: 0 });
+                row.nombre = en.nombre || row.nombre;
+                row.apellido = en.apellido || row.apellido;
+                row.nombreCompleto = en.nombreCompleto || row.nombreCompleto;
+              }
+            }
+          }
+          if (window.QB && QB.avatars) {
+            bestNombre = QB.avatars.realName(row) || QB.avatars.shortName(row) || '';
+          }
+          if (!bestNombre) {
+            bestNombre =
+              String(row.nombreCompleto || '').trim() ||
+              (String(row.apellido || '').trim() + ' ' + String(row.nombre || '').trim()).trim();
+          }
+        }
+        if (!bestNombre && bestCi) bestNombre = 'CI ' + bestCi;
         return {
           grupo: g.grupo,
           nombre: full || short || 'Sin supervisor',
@@ -2121,7 +2207,10 @@ QB.charts = {
           lic: this.shortGrupo(g.grupo),
           c: Number(g.c) || 0,
           n: Number(g.n) || 0,
-          avg: Number(g.avg) || 0
+          avg: Number(g.avg) || 0,
+          bestCi,
+          bestC: Number(g.bestC) || 0,
+          bestNombre: bestNombre || '—'
         };
       })
       .filter((s) => s.c > 0);
@@ -2147,119 +2236,6 @@ QB.charts = {
 
     this.renderLiderazgo(supervisores);
     this._insightLiderazgo(supervisores);
-
-    this.renderPeoresLic(porGrupo);
-    this._insightPeoresLic(porGrupo);
-  },
-
-  _barHSupervisores(chartId, items, valueKey, opts) {
-    const chart = this.ensure(chartId);
-    if (!chart) return;
-    const list = [...(items || [])].reverse();
-    const mobile = this.isMobile();
-    const self = this;
-    const unit = (opts && opts.unit) || 'jarras';
-    if (!list.length) {
-      chart.clear();
-      chart.setOption({
-        title: {
-          text: 'Sin datos de supervisores',
-          left: 'center',
-          top: 'middle',
-          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
-        }
-      });
-      return;
-    }
-    chart.setOption({
-      tooltip: Object.assign(this.tipBase(), {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (p) => {
-          const s = list[p[0].dataIndex];
-          if (!s) return '';
-          const rank = list.length - p[0].dataIndex;
-          return (
-            '<b>#' +
-            rank +
-            ' · ' +
-            s.short +
-            '</b><br/>' +
-            s.lic +
-            '<br/>' +
-            s.nombre +
-            '<br/>Jarras: <b>' +
-            self.fmtK(s.c) +
-            '</b><br/>Personas: <b>' +
-            s.n +
-            '</b><br/>Promedio: <b>' +
-            self.fmtK(s.avg) +
-            '</b> /pers'
-          );
-        }
-      }),
-      grid: {
-        left: 8,
-        right: mobile ? 44 : 58,
-        top: 16,
-        bottom: 16,
-        containLabel: true
-      },
-      toolbox: this.toolboxMini(),
-      dataZoom: this.zoomOpts('y', list.length),
-      xAxis: {
-        type: 'value',
-        name: unit,
-        nameTextStyle: { color: '#6a7a70', fontSize: 11, padding: [8, 0, 0, 0] },
-        axisLabel: this._baseText(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      yAxis: {
-        type: 'category',
-        data: list.map((s) => {
-          const label = s.short + ' · ' + s.lic;
-          return label.length > 24 ? label.slice(0, 22) + '…' : label;
-        }),
-        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 650, color: '#1a2420' }),
-        axisTick: { show: false },
-        axisLine: { show: false }
-      },
-      series: [{
-        type: 'bar',
-        data: list.map((s, i) => {
-          const rankFromTop = list.length - 1 - i;
-          return {
-            value: s[valueKey],
-            itemStyle: {
-              borderRadius: [0, 14, 14, 0],
-              color: self.rankColor(rankFromTop)
-            }
-          };
-        }),
-        barMaxWidth: mobile ? 26 : 30,
-        barCategoryGap: '28%',
-        showBackground: true,
-        backgroundStyle: {
-          color: 'rgba(74, 184, 72, 0.06)',
-          borderRadius: [0, 14, 14, 0]
-        },
-        label: {
-          show: true,
-          position: 'right',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: mobile ? 11 : 12,
-          formatter: (p) => self.fmtK(p.value)
-        }
-      }],
-      animationDuration: 700,
-      animationEasing: 'cubicOut'
-    }, true);
-  },
-
-  renderTopSupervisores(supervisores) {
-    const top = [...(supervisores || [])].sort((a, b) => b.c - a.c).slice(0, 10);
-    this._barHSupervisores('chartTopSupervisores', top, 'c', { unit: 'Jarras' });
   },
 
   /** Comparación · supervisores con más personas < 30 jarras */
@@ -2402,165 +2378,6 @@ QB.charts = {
     setTimeout(() => chart.resize({ width: chartW, height: chartH }), 80);
   },
 
-  renderPromedioSupervisor(supervisores) {
-    const chart = this.ensure('chartPromedioSupervisor');
-    if (!chart) return;
-    const top = [...(supervisores || [])]
-      .filter((s) => s.n > 0)
-      .sort((a, b) => b.avg - a.avg)
-      .slice(0, 10);
-    const self = this;
-    const mobile = this.isMobile();
-    if (!top.length) {
-      chart.clear();
-      return;
-    }
-    chart.setOption({
-      tooltip: Object.assign(this.tipBase(), {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (p) => {
-          const s = top[p[0].dataIndex];
-          return (
-            '<b>' +
-            s.short +
-            '</b><br/>' +
-            s.lic +
-            '<br/>' +
-            self.fmtK(s.avg) +
-            ' jarras/persona<br/>' +
-            s.n +
-            ' personas · total ' +
-            self.fmtK(s.c)
-          );
-        }
-      }),
-      grid: { left: 10, right: 12, top: 28, bottom: mobile ? 56 : 48, containLabel: true },
-      toolbox: this.toolboxMini(),
-      xAxis: {
-        type: 'category',
-        data: top.map((s) => (s.short.length > 10 ? s.short.slice(0, 8) + '…' : s.short)),
-        axisLabel: this._label({
-          fontSize: mobile ? 9 : 10,
-          fontWeight: 650,
-          rotate: mobile ? 32 : 22,
-          color: '#1a2420'
-        }),
-        axisTick: { show: false }
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Jarras / pers',
-        axisLabel: this._baseText(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      series: [{
-        type: 'bar',
-        data: top.map((s, i) => ({
-          value: s.avg,
-          itemStyle: {
-            borderRadius: [12, 12, 4, 4],
-            color: self.barGrad(self.logoPair(i)[0], self.logoPair(i)[1], true)
-          }
-        })),
-        barMaxWidth: mobile ? 28 : 36,
-        barCategoryGap: '35%',
-        label: {
-          show: true,
-          position: 'top',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: 11,
-          formatter: (p) => self.fmtK(p.value)
-        }
-      }],
-      animationDuration: 700
-    }, true);
-  },
-
-  renderRankingSupervisores(supervisores) {
-    const top = [...(supervisores || [])].sort((a, b) => b.c - a.c).slice(0, 12);
-    const chart = this.ensure('chartRankingSupervisores');
-    if (!chart) return;
-    const list = top.slice().reverse();
-    const self = this;
-    const mobile = this.isMobile();
-    if (!list.length) {
-      chart.clear();
-      return;
-    }
-    chart.setOption({
-      tooltip: Object.assign(this.tipBase(), {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (p) => {
-          const s = list[p[0].dataIndex];
-          const rank = list.length - p[0].dataIndex;
-          return (
-            '<b>#' +
-            rank +
-            ' · ' +
-            s.nombre +
-            '</b><br/>' +
-            s.lic +
-            '<br/>Total: <b>' +
-            self.fmtK(s.c) +
-            '</b> jarras<br/>' +
-            s.n +
-            ' personas · ' +
-            self.fmtK(s.avg) +
-            ' /pers'
-          );
-        }
-      }),
-      grid: { left: 8, right: mobile ? 44 : 58, top: 16, bottom: 16, containLabel: true },
-      toolbox: this.toolboxMini(),
-      dataZoom: this.zoomOpts('y', list.length),
-      xAxis: {
-        type: 'value',
-        axisLabel: this._baseText(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      yAxis: {
-        type: 'category',
-        data: list.map((s, i) => {
-          const rank = list.length - i;
-          const name = s.short.length > 14 ? s.short.slice(0, 12) + '…' : s.short;
-          return '#' + rank + ' ' + name;
-        }),
-        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 650, color: '#1a2420' }),
-        axisTick: { show: false },
-        axisLine: { show: false }
-      },
-      series: [{
-        type: 'bar',
-        data: list.map((s, i) => ({
-          value: s.c,
-          itemStyle: {
-            borderRadius: [0, 14, 14, 0],
-            color: self.rankColor(list.length - 1 - i)
-          }
-        })),
-        barMaxWidth: mobile ? 26 : 30,
-        barCategoryGap: '28%',
-        showBackground: true,
-        backgroundStyle: { color: 'rgba(228, 30, 38, 0.05)', borderRadius: [0, 14, 14, 0] },
-        label: {
-          show: true,
-          position: 'right',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: mobile ? 10 : 11,
-          formatter: (p) => {
-            const s = list[p.dataIndex];
-            return self.fmtK(p.value) + ' · ' + s.lic;
-          }
-        }
-      }],
-      animationDuration: 700
-    }, true);
-  },
-
   /** Agrega jarras por lote desde filas o kpis.porLote (respaldo) */
   _loteItems(rows, kpis, limit) {
     const by = {};
@@ -2666,58 +2483,6 @@ QB.charts = {
     }, true);
   },
 
-  _insightTopSupervisores(list) {
-    const top = [...(list || [])].sort((a, b) => b.c - a.c)[0];
-    if (!top) {
-      this.setInsight('insightTopSupervisores', 'Sin supervisores con producción.');
-      return;
-    }
-    this.setInsight(
-      'insightTopSupervisores',
-      'Más volumen: ' + top.short + ' (' + top.lic + ') · ' + this.fmtK(top.c) + ' jarras.'
-    );
-  },
-
-  _insightPromedioSupervisor(list) {
-    const top = [...(list || [])].filter((s) => s.n > 0).sort((a, b) => b.avg - a.avg)[0];
-    if (!top) {
-      this.setInsight('insightPromedioSupervisor', 'Sin promedio aún.');
-      return;
-    }
-    this.setInsight(
-      'insightPromedioSupervisor',
-      'Mejor ritmo: ' +
-        top.short +
-        ' · ' +
-        this.fmtK(top.avg) +
-        ' jarras/persona (' +
-        top.n +
-        ' pers).'
-    );
-  },
-
-  _insightRankingSupervisores(list) {
-    const sorted = [...(list || [])].sort((a, b) => b.c - a.c);
-    if (!sorted.length) {
-      this.setInsight('insightRankingSupervisores', 'Sin ranking.');
-      return;
-    }
-    const hi = sorted[0];
-    const lo = sorted[sorted.length - 1];
-    this.setInsight(
-      'insightRankingSupervisores',
-      '#' +
-        1 +
-        ' ' +
-        hi.short +
-        ' · último: ' +
-        lo.short +
-        ' (' +
-        this.fmtK(lo.c) +
-        ' jarras).'
-    );
-  },
-
   _insightTopLotes(rows, kpis) {
     const list = this._loteItems(rows, kpis, 50).map((r) => [r.lote, r.c]);
     if (!list.length) {
@@ -2730,340 +2495,414 @@ QB.charts = {
     );
   },
 
-  /** LIC con más jarras (total) */
+  licPlaceColor(place, vertical) {
+    const v = !!vertical;
+    if (place === 1) return this.barGrad('#9a7208', '#e3c04a', v);
+    if (place === 2) return this.barGrad('#5c6772', '#c4ccd4', v);
+    if (place === 3) return this.barGrad('#7a4518', '#d4a06a', v);
+    const greens = [
+      ['#1e6b34', '#4ab848'],
+      ['#246f3a', '#5cbf68'],
+      ['#2a7540', '#6bc676']
+    ];
+    const pair = greens[(place - 4) % greens.length];
+    return this.barGrad(pair[0], pair[1], v);
+  },
+
+  apellidoDe(grupo) {
+    const jefe = this.jefeDe(grupo);
+    if (!jefe) return this.shortGrupo(grupo);
+    return jefe;
+  },
+
+  renderLicCups(ranked) {
+    const host = document.getElementById('chartTopLicCups');
+    if (!host) return;
+    if (!ranked || !ranked.length) {
+      host.innerHTML = '';
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    const esc = (s) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const ico = QB.icons || {};
+    const cup = ico.trophy ? ico.trophy(16) : '';
+    const star = ico.star ? ico.star(14) : '';
+    host.innerHTML = ranked
+      .map((g, i) => {
+        const place = i + 1;
+        const cls = place === 1 ? 'is-gold' : place === 2 ? 'is-silver' : place === 3 ? 'is-bronze' : 'is-rest';
+        const mark = place === 1 ? cup : place <= 3 ? star : String(place);
+        return (
+          '<span class="lic-cup ' +
+          cls +
+          '" title="' +
+          place +
+          '.º · ' +
+          esc(this.grupoConJefe(g.grupo)) +
+          '">' +
+          '<span class="lic-cup-mark" aria-hidden="true">' +
+          mark +
+          '</span>' +
+          '<b>' +
+          place +
+          '.º</b>' +
+          '<em>' +
+          esc(this.shortGrupo(g.grupo)) +
+          '</em>' +
+          '</span>'
+        );
+      })
+      .join('');
+  },
+
+  /** LIC · barras hacia arriba · apellido · copa formal encima */
   renderTopLic(stats) {
-    const chart = this.ensure('chartTopLic');
-    if (!chart) return;
+    const el = document.getElementById('chartTopLic');
+    const cups = document.getElementById('chartTopLicCups');
+    if (cups) {
+      cups.innerHTML = '';
+      cups.hidden = true;
+    }
     const items = [...(stats || [])]
       .filter((g) => (g.c || 0) > 0)
-      .sort((a, b) => (b.c || 0) - (a.c || 0))
-      .slice(0, 10)
-      .reverse();
-    const self = this;
+      .sort((a, b) => (b.c || 0) - (a.c || 0) || (b.avg || 0) - (a.avg || 0));
+
+    if (!el) return;
+    const n = items.length;
+    this._topLicCount = n;
     const mobile = this.isMobile();
+    const fit = this._fitTopLicWidth(el, n);
+    if (fit.avail < 40) {
+      const tries = Number(el.dataset.fitTries || 0);
+      if (tries < 8) {
+        el.dataset.fitTries = String(tries + 1);
+        const self = this;
+        setTimeout(function () {
+          self.renderTopLic(stats);
+        }, 140);
+      }
+    } else {
+      el.dataset.fitTries = '0';
+    }
+
+    const chart = this.ensure('chartTopLic');
+    if (!chart) return;
+    const self = this;
     if (!items.length) {
       chart.clear();
       chart.setOption({
         title: {
-          text: 'Sin datos de LIC',
+          text: 'Sin producción para ranking',
           left: 'center',
           top: 'middle',
-          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
+          textStyle: { color: '#5a6b60', fontSize: 14, fontWeight: 600 }
         }
       });
       return;
     }
     const total = items.reduce((s, g) => s + (g.c || 0), 0) || 1;
+    const fmtN = (v) => Number(v || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 });
     chart.setOption({
       tooltip: Object.assign(this.tipBase(), {
         trigger: 'axis',
-        axisPointer: { type: 'shadow' },
+        axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(20, 53, 37, 0.06)' } },
         formatter: (p) => {
           const g = items[p[0].dataIndex];
-          const rank = items.length - p[0].dataIndex;
+          const rank = p[0].dataIndex + 1;
           const pct = (((g.c || 0) / total) * 100).toFixed(1);
+          const puesto =
+            rank === 1 ? 'Primer puesto' : rank === 2 ? 'Segundo puesto' : rank === 3 ? 'Tercer puesto' : rank + '.º puesto';
           return (
-            '<b>#' +
-            rank +
-            ' · ' +
-            self.grupoConJefe(g.grupo) +
-            '</b><br/>Jarras: <b>' +
-            Number(g.c).toLocaleString('es-PE') +
-            '</b><br/>Del top: <b>' +
+            '<div style="min-width:168px">' +
+            '<div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7c72;margin-bottom:4px">' +
+            puesto +
+            '</div>' +
+            '<b style="font-size:14px">' +
+            self.apellidoDe(g.grupo) +
+            '</b><br/>' +
+            '<span style="color:#4a5c52">' +
+            self.shortGrupo(g.grupo) +
+            '</span><br/>' +
+            '<span style="display:block;margin-top:6px">Jarras <b>' +
+            fmtN(g.c) +
+            '</b> · ' +
             pct +
-            '%</b>'
+            '% del día</span>' +
+            '<span style="display:block">Ratio <b>' +
+            self.fmtK(g.avg) +
+            '</b></span></div>'
           );
         }
       }),
-      grid: { left: 8, right: mobile ? 48 : 64, top: 16, bottom: mobile ? 28 : 24, containLabel: true },
-      toolbox: this.toolboxMini(),
+      grid: { left: 44, right: 16, top: 62, bottom: mobile ? 78 : 86, containLabel: false },
+      toolbox: { show: false },
       xAxis: {
+        type: 'category',
+        data: items.map((g) => self.apellidoDe(g.grupo)),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#dfe6e0' } },
+        axisLabel: this._label({
+          fontSize: mobile ? 10 : 11,
+          fontWeight: 700,
+          color: '#143525',
+          interval: 0,
+          hideOverlap: false,
+          lineHeight: 14,
+          formatter: (v) => {
+            const parts = String(v || '').trim().split(/\s+/);
+            if (parts.length >= 2) return parts[0] + '\n' + parts.slice(1).join(' ');
+            return v;
+          }
+        })
+      },
+      yAxis: {
         type: 'value',
         splitNumber: mobile ? 3 : 4,
         axisLabel: this._numAxisLabel(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      yAxis: {
-        type: 'category',
-        data: items.map((g) => {
-          const n = self.grupoConJefe(g.grupo);
-          return n.length > 24 ? n.slice(0, 22) + '…' : n;
-        }),
-        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 650, color: '#1a2420' }),
-        axisTick: { show: false },
-        axisLine: { show: false }
+        splitLine: { lineStyle: { color: '#eef3ee', type: 'solid' } },
+        axisLine: { show: false },
+        axisTick: { show: false }
       },
       series: [{
         type: 'bar',
-        data: items.map((g, i) => {
-          const rankFromTop = items.length - 1 - i;
-          return {
-            value: g.c,
-            itemStyle: {
-              borderRadius: [0, 14, 14, 0],
-              color: self.rankColor(rankFromTop)
-            }
-          };
-        }),
-        barMaxWidth: mobile ? 26 : 30,
-        barCategoryGap: '28%',
+        data: items.map((g, i) => ({
+          value: g.c,
+          itemStyle: {
+            borderRadius: [10, 10, 3, 3],
+            color: self.licPlaceColor(i + 1, true)
+          }
+        })),
+        barMaxWidth: n <= 8 ? (mobile ? 48 : 64) : mobile ? 36 : 48,
+        barCategoryGap: n <= 6 ? '22%' : '32%',
         showBackground: true,
-        backgroundStyle: { color: 'rgba(74, 184, 72, 0.06)', borderRadius: [0, 14, 14, 0] },
+        backgroundStyle: { color: 'rgba(20, 53, 37, 0.045)', borderRadius: [10, 10, 3, 3] },
         label: {
           show: true,
-          position: 'right',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: mobile ? 11 : 12,
-          formatter: (p) => self.fmtK(p.value)
+          position: 'top',
+          distance: 6,
+          formatter: (p) => {
+            const place = p.dataIndex + 1;
+            const tag = place === 1 ? 'gold' : place === 2 ? 'silv' : place === 3 ? 'bron' : 'rank';
+            const mark = place <= 3 ? place + '.º' : String(place);
+            return '{' + tag + '|' + mark + '}\n{val|' + self.fmtK(p.value) + '}';
+          },
+          rich: {
+            gold: {
+              backgroundColor: '#c9a227',
+              color: '#fffdf4',
+              fontWeight: 800,
+              fontSize: mobile ? 10 : 11,
+              borderRadius: 10,
+              padding: [3, 8],
+              align: 'center'
+            },
+            silv: {
+              backgroundColor: '#7d8794',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: mobile ? 10 : 11,
+              borderRadius: 10,
+              padding: [3, 8],
+              align: 'center'
+            },
+            bron: {
+              backgroundColor: '#a06732',
+              color: '#fff8f0',
+              fontWeight: 800,
+              fontSize: mobile ? 10 : 11,
+              borderRadius: 10,
+              padding: [3, 8],
+              align: 'center'
+            },
+            rank: {
+              backgroundColor: '#e8eee9',
+              color: '#143525',
+              fontWeight: 750,
+              fontSize: mobile ? 10 : 11,
+              borderRadius: 10,
+              padding: [3, 7],
+              align: 'center'
+            },
+            val: {
+              fontSize: mobile ? 10 : 11,
+              fontWeight: 750,
+              color: '#143525',
+              lineHeight: 18,
+              align: 'center',
+              padding: [4, 0, 0, 0]
+            }
+          }
         }
       }],
-      animationDuration: 700
+      animationDuration: 720,
+      animationEasing: 'cubicOut'
     }, true);
+    requestAnimationFrame(function () {
+      if (!chart.isDisposed()) chart.resize();
+    });
   },
 
   _insightTopLic(stats) {
-    const top = [...(stats || [])].filter((g) => g.c > 0).sort((a, b) => b.c - a.c)[0];
+    const top = [...(stats || [])].filter((g) => g.c > 0).sort((a, b) => (b.c || 0) - (a.c || 0) || (b.avg || 0) - (a.avg || 0))[0];
     if (!top) {
       this.setInsight('insightTopLic', 'Sin LIC con producción.');
       return;
     }
+    const n = [...(stats || [])].filter((g) => g.c > 0).length;
     this.setInsight(
       'insightTopLic',
-      'Más producción: ' +
-        this.grupoConJefe(top.grupo) +
+      '1.º por jarras: ' +
+        this.apellidoDe(top.grupo) +
         ' · ' +
-        this.fmtK(top.c) +
-        ' jarras.'
+        Number(top.c).toLocaleString('es-PE', { maximumFractionDigits: 0 }) +
+        ' jarras · ratio ' +
+        this.fmtK(top.avg) +
+        ' · ' +
+        n +
+        ' grupos.'
     );
   },
 
-  /** Supervisor · grupo con más liderazgo (mejor avg jarras/persona) */
+  /** Todos los supervisores · ranking completo */
   renderLiderazgo(supervisores) {
-    const chart = this.ensure('chartLiderazgo');
-    if (!chart) return;
+    const el = document.getElementById('chartLiderazgo');
+    if (!el) return;
+    this.dispose('chartLiderazgo');
+    const KG = 1.15;
     const items = [...(supervisores || [])]
-      .filter((s) => s.n > 0 && s.avg > 0)
-      .sort((a, b) => b.avg - a.avg)
-      .slice(0, 10)
-      .reverse();
-    const self = this;
-    const mobile = this.isMobile();
+      .filter((s) => (s.c || 0) > 0)
+      .sort((a, b) => (b.avg || 0) - (a.avg || 0) || (b.c || 0) - (a.c || 0));
     if (!items.length) {
-      chart.clear();
-      chart.setOption({
-        title: {
-          text: 'Sin datos de liderazgo',
-          left: 'center',
-          top: 'middle',
-          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
-        }
-      });
+      el.innerHTML = '<p class="sup-rank-empty">Sin supervisores con producción.</p>';
       return;
     }
-    chart.setOption({
-      tooltip: Object.assign(this.tipBase(), {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (p) => {
-          const s = items[p[0].dataIndex];
-          const rank = items.length - p[0].dataIndex;
-          return (
-            '<b>#' +
-            rank +
-            ' · ' +
-            s.nombre +
-            '</b><br/>LIC ' +
-            s.lic +
-            '<br/>' +
-            self.fmtK(s.avg) +
-            ' jarras/persona<br/>' +
-            s.n +
-            ' personas · total ' +
-            self.fmtK(s.c)
-          );
-        }
-      }),
-      grid: { left: 8, right: mobile ? 48 : 64, top: 16, bottom: mobile ? 28 : 24, containLabel: true },
-      toolbox: this.toolboxMini(),
-      xAxis: {
-        type: 'value',
-        name: mobile ? '' : 'Jarras / pers',
-        splitNumber: mobile ? 3 : 4,
-        axisLabel: this._numAxisLabel(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      yAxis: {
-        type: 'category',
-        data: items.map((s) => {
-          const label = s.short + ' · ' + s.lic;
-          return label.length > 24 ? label.slice(0, 22) + '…' : label;
-        }),
-        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 650, color: '#1a2420' }),
-        axisTick: { show: false },
-        axisLine: { show: false }
-      },
-      series: [{
-        type: 'bar',
-        data: items.map((s, i) => {
-          const rankFromTop = items.length - 1 - i;
-          return {
-            value: s.avg,
-            itemStyle: {
-              borderRadius: [0, 14, 14, 0],
-              color: self.rankColor(rankFromTop)
-            }
-          };
-        }),
-        barMaxWidth: mobile ? 26 : 30,
-        barCategoryGap: '28%',
-        showBackground: true,
-        backgroundStyle: { color: 'rgba(141, 198, 63, 0.08)', borderRadius: [0, 14, 14, 0] },
-        label: {
-          show: true,
-          position: 'right',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: mobile ? 11 : 12,
-          formatter: (p) => self.fmtK(p.value)
-        }
-      }],
-      animationDuration: 700
-    }, true);
+    const esc = (s) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const num = (n) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 1 });
+    const ico = QB.icons || {};
+    const cups = [
+      ico.cupGold ? ico.cupGold(36) : '',
+      ico.cupSilver ? ico.cupSilver(32) : '',
+      ico.cupBronze ? ico.cupBronze(32) : ''
+    ];
+    const placeMeta = [
+      { cls: 'is-gold', tag: 'Primer puesto', cup: cups[0] },
+      { cls: 'is-silver', tag: 'Segundo puesto', cup: cups[1] },
+      { cls: 'is-bronze', tag: 'Tercer puesto', cup: cups[2] }
+    ];
+    const medalHtml = (place) => {
+      const meta = placeMeta[place - 1];
+      if (meta) {
+        return (
+          '<span class="sup-medal ' +
+          meta.cls +
+          '" title="' +
+          place +
+          '.º ' +
+          meta.tag +
+          '">' +
+          meta.cup +
+          '</span>'
+        );
+      }
+      return '<span class="sup-medal is-rest">' + place + '</span>';
+    };
+    const rows = items
+      .map((s, i) => {
+        const place = i + 1;
+        const kg = (Number(s.c) || 0) * KG;
+        const rowCls = place === 1 ? 'is-gold' : place === 2 ? 'is-silver' : place === 3 ? 'is-bronze' : '';
+        const best =
+          s.bestNombre && s.bestNombre !== '—'
+            ? '<span class="sup-best-pick">' +
+              (ico.crown ? ico.crown(12) : '') +
+              '<span class="sup-best-name">' +
+              esc(s.bestNombre) +
+              '</span></span>'
+            : '<span class="sup-best-empty">—</span>';
+        return (
+          '<tr class="' +
+          rowCls +
+          '">' +
+          '<td class="num sup-rank-place">' +
+          medalHtml(place) +
+          '</td>' +
+          '<td><strong>' +
+          esc(s.nombre) +
+          '</strong><span class="sup-rank-lic">' +
+          esc(s.lic) +
+          '</span></td>' +
+          '<td class="sup-rank-best">' +
+          best +
+          '</td>' +
+          '<td class="num">' +
+          num(s.c) +
+          '</td>' +
+          '<td class="num">' +
+          num(kg) +
+          '</td>' +
+          '<td class="num">' +
+          num(s.avg) +
+          '</td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+    el.innerHTML =
+      '<div class="sup-rank-board">' +
+      '<div class="sup-rank-scroll">' +
+      '<table class="sup-rank-table">' +
+      '<thead><tr>' +
+      '<th class="num">Copa</th>' +
+      '<th>Supervisor</th>' +
+      '<th><span class="th-with-ico">' +
+      (ico.crown ? ico.crown(13) : '') +
+      '<span>Mejor cosechador</span></span></th>' +
+      '<th class="num">Jarras</th>' +
+      '<th class="num"><span class="th-with-ico">' +
+      (ico.blueberrySoft ? ico.blueberrySoft(13) : '') +
+      '<span>kg</span></span></th>' +
+      '<th class="num"><span class="th-with-ico">' +
+      (ico.personSoft ? ico.personSoft(13) : '') +
+      '<span>Ratio</span></span></th>' +
+      '</tr></thead>' +
+      '<tbody>' +
+      rows +
+      '</tbody></table></div></div>';
   },
 
   _insightLiderazgo(supervisores) {
-    const top = [...(supervisores || [])]
-      .filter((s) => s.n > 0)
-      .sort((a, b) => b.avg - a.avg)[0];
-    if (!top) {
-      this.setInsight('insightLiderazgo', 'Sin liderazgo para mostrar.');
+    const list = [...(supervisores || [])]
+      .filter((s) => (s.c || 0) > 0)
+      .sort((a, b) => (b.avg || 0) - (a.avg || 0) || (b.c || 0) - (a.c || 0));
+    if (!list.length) {
+      this.setInsight('insightLiderazgo', 'Sin supervisores para mostrar.');
       return;
     }
+    const top = list[0];
+    const host = document.getElementById('chartLiderazgo');
+    const variedad = host ? String(host.getAttribute('data-variedad') || '').trim() : '';
     this.setInsight(
       'insightLiderazgo',
-      'Más liderazgo: ' +
+      (variedad ? variedad + ' · ' : '') +
+        list.length +
+        ' supervisores · 1.º ' +
         top.nombre +
-        ' (' +
-        top.lic +
-        ') · ' +
-        this.fmtK(top.avg) +
-        ' jarras/persona.'
-    );
-  },
-
-  /** Peores LIC · menos jarras totales */
-  renderPeoresLic(stats) {
-    const chart = this.ensure('chartPeoresLic');
-    if (!chart) return;
-    const sorted = [...(stats || [])]
-      .filter((g) => (g.c || 0) > 0)
-      .sort((a, b) => (a.c || 0) - (b.c || 0));
-    const items = sorted.slice(0, 10).reverse();
-    const self = this;
-    const mobile = this.isMobile();
-    if (!items.length) {
-      chart.clear();
-      chart.setOption({
-        title: {
-          text: 'Sin LIC para revisar',
-          left: 'center',
-          top: 'middle',
-          textStyle: { color: '#6b7280', fontSize: 14, fontWeight: 600 }
-        }
-      });
-      return;
-    }
-    const warnPairs = [
-      ['#e41e26', '#f7941d'],
-      ['#f7941d', '#fbbf24'],
-      ['#d97706', '#fcd34d'],
-      ['#b45309', '#fde68a'],
-      ['#9a3412', '#fed7aa']
-    ];
-    chart.setOption({
-      tooltip: Object.assign(this.tipBase(), {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (p) => {
-          const g = items[p[0].dataIndex];
-          const fromWorst = items.length - p[0].dataIndex;
-          return (
-            '<b>Revisar #' +
-            fromWorst +
-            ' · ' +
-            self.grupoConJefe(g.grupo) +
-            '</b><br/>Jarras: <b>' +
-            Number(g.c).toLocaleString('es-PE') +
-            '</b><br/>' +
-            (g.n || 0) +
-            ' personas · ' +
-            self.fmtK(g.avg || 0) +
-            ' /pers'
-          );
-        }
-      }),
-      grid: { left: 8, right: mobile ? 48 : 64, top: 16, bottom: mobile ? 28 : 24, containLabel: true },
-      toolbox: this.toolboxMini(),
-      xAxis: {
-        type: 'value',
-        splitNumber: mobile ? 3 : 4,
-        axisLabel: this._numAxisLabel(),
-        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
-      },
-      yAxis: {
-        type: 'category',
-        data: items.map((g) => {
-          const n = self.grupoConJefe(g.grupo);
-          return n.length > 24 ? n.slice(0, 22) + '…' : n;
-        }),
-        axisLabel: this._label({ fontSize: mobile ? 11 : 12, fontWeight: 650, color: '#1a2420' }),
-        axisTick: { show: false },
-        axisLine: { show: false }
-      },
-      series: [{
-        type: 'bar',
-        data: items.map((g, i) => {
-          const fromWorst = items.length - 1 - i;
-          const pair = warnPairs[Math.min(fromWorst, warnPairs.length - 1)];
-          return {
-            value: g.c,
-            itemStyle: {
-              borderRadius: [0, 14, 14, 0],
-              color: self.barGrad(pair[0], pair[1], false)
-            }
-          };
-        }),
-        barMaxWidth: mobile ? 26 : 30,
-        barCategoryGap: '28%',
-        showBackground: true,
-        backgroundStyle: { color: 'rgba(228, 30, 38, 0.05)', borderRadius: [0, 14, 14, 0] },
-        label: {
-          show: true,
-          position: 'right',
-          color: '#143525',
-          fontWeight: 750,
-          fontSize: mobile ? 11 : 12,
-          formatter: (p) => self.fmtK(p.value)
-        }
-      }],
-      animationDuration: 700
-    }, true);
-  },
-
-  _insightPeoresLic(stats) {
-    const worst = [...(stats || [])].filter((g) => g.c > 0).sort((a, b) => a.c - b.c)[0];
-    if (!worst) {
-      this.setInsight('insightPeoresLic', 'Sin LIC bajos para revisar.');
-      return;
-    }
-    this.setInsight(
-      'insightPeoresLic',
-      'Más bajo hoy: ' +
-        this.grupoConJefe(worst.grupo) +
         ' · ' +
-        this.fmtK(worst.c) +
-        ' jarras · conviene apoyo.'
+        this.fmtK(top.c) +
+        ' jarras · ' +
+        this.fmtK(top.c * 1.15) +
+        ' kg · ratio ' +
+        this.fmtK(top.avg) +
+        '.'
     );
   },
 
@@ -3815,6 +3654,89 @@ QB.charts = {
         }
       ],
       animationDuration: 550
+    }, true);
+  },
+
+  renderHistorialBarras(serie) {
+    const chart = this.ensure('chartHistorial');
+    if (!chart) return;
+    const rows = serie || [];
+    if (!rows.length) {
+      chart.clear();
+      chart.setOption({
+        title: {
+          text: 'Sin fechas cargadas',
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#6b7280', fontSize: 13, fontWeight: 600 }
+        }
+      });
+      return;
+    }
+    const self = this;
+    const mobile = this.isMobile();
+    chart.setOption({
+      tooltip: Object.assign(this.tipBase(), {
+        trigger: 'axis',
+        formatter: function (items) {
+          const i = items && items[0] ? items[0].dataIndex : 0;
+          const r = rows[i] || {};
+          const est =
+            r.estado === 'ok' ? 'Asistió' : r.estado === 'falta' ? 'Faltó' : r.estado === 'permiso' ? 'Permiso' : 'Sin data';
+          return (
+            '<b>' +
+            self.fmtFecha(r.fecha) +
+            '</b><br/>' +
+            est +
+            (r.supervisor ? '<br/>Jefe: ' + r.supervisor : '') +
+            (r.lic ? '<br/>' + r.lic : '') +
+            (r.jarras ? '<br/>Jarras: ' + r.jarras : '')
+          );
+        }
+      }),
+      grid: { left: 8, right: 8, top: 18, bottom: mobile ? 28 : 36, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: rows.map((r) => r.label),
+        axisLabel: this._label({ fontSize: mobile ? 10 : 11, color: '#4b5563' }),
+        axisTick: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: this._baseText(),
+        splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: rows.map((r) => ({
+            value: r.estado === 'falta' ? Math.max(r.valor || 0, 1) : r.valor,
+            itemStyle: {
+              borderRadius: [6, 6, 0, 0],
+              color:
+                r.estado === 'ok'
+                  ? self.barGrad('#4ab848', '#8dc63f', true)
+                  : r.estado === 'falta'
+                  ? self.barGrad('#e41e26', '#fb7185', true)
+                  : '#d1d5db'
+            }
+          })),
+          barMaxWidth: 28,
+          label: {
+            show: true,
+            position: 'top',
+            formatter: function (p) {
+              const r = rows[p.dataIndex] || {};
+              return r.estado === 'falta' ? 'F' : r.jarras ? String(r.jarras) : '';
+            },
+            fontSize: mobile ? 9 : 10,
+            fontWeight: 700,
+            color: '#374151'
+          }
+        }
+      ],
+      animationDuration: 500
     }, true);
   }
 };

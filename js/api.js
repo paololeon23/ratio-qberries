@@ -134,11 +134,20 @@ QB.api = {
 
   prefetchFechas(hojas, skipFecha) {
     const skip = String(skipFecha || '').trim();
+    const pending = [];
     (hojas || []).forEach((h) => {
       const f = h && h.fecha;
       if (!f || f === skip) return;
       if (this.getPackForFecha(f)) return;
-      this.cargarTodo({ fecha: f, background: true, allowCacheFallback: true });
+      pending.push(f);
+    });
+    if (!pending.length) return;
+    /* Una fecha a la vez · Apps Script se ahoga si pedimos todas juntas */
+    this._prefetchQueue = this._prefetchQueue || Promise.resolve();
+    pending.forEach((f) => {
+      this._prefetchQueue = this._prefetchQueue
+        .then(() => this.cargarTodo({ fecha: f, background: true, allowCacheFallback: true }))
+        .catch(function () {});
     });
   },
 
@@ -347,11 +356,11 @@ QB.api = {
     if (!QB.config.apiBase || this._pollTimer) return;
     this._pollTimer = setInterval(async () => {
       try {
-        const fecha =
-          (window.QB && QB.appFecha && QB.appFecha()) ||
-          (this._lastPack && this._lastPack.hoy) ||
-          '';
-        const r = await this.refresh({ fecha: fecha });
+        const active =
+          (window.QB && QB.appFecha && QB.appFecha()) || '';
+        const latest = (this._lastPack && this._lastPack.hoy) || '';
+        if (active && latest && active !== latest) return;
+        const r = await this.refresh({ fecha: '' });
         if (r.changed && !r.fromCache) {
           window.dispatchEvent(
             new CustomEvent('qb:data-updated', {

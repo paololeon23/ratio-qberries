@@ -42,7 +42,7 @@ QB.workers = {
       return this.map;
     }
     try {
-      const res = await fetch('data/trabajadores.json', { cache: 'no-store' });
+      const res = await fetch('data/trabajadores.json', { cache: 'force-cache' });
       if (!res.ok) throw new Error('trabajadores HTTP ' + res.status);
       const list = await res.json();
       const map = new Map();

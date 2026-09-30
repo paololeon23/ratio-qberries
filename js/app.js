@@ -4,6 +4,12 @@
   const COMPARE_LT40 = 30;
   /** Umbral alto: 58 jarras o más */
   const COMPARE_GTE58 = 58;
+  /** 1 jarra = 1.15 kg (factor por defecto) */
+  const JARRA_A_KG = 1.15;
+  const KG_FACTORS = [1.1, 1.12, 1.14];
+  let kgFactor = JARRA_A_KG;
+  /** SHA-256 del acceso autorizado · nunca la clave en texto */
+  const AUTH_GATE_HASH = '1bf35246e1bd473ef190016d4f5ba2ef85eb6b76d07db45134d9987a132acdca';
 
   const state = {
     hojas: [],
@@ -41,7 +47,11 @@
     variedadOpts: [],
     _workersDirty: true,
     _gruposDirty: true,
-    _chartsTimer: 0
+    _chartsTimer: 0,
+    _paintKey: '',
+    historialOk: false,
+    historialDni: '',
+    historialBloque: 'i'
   };
 
   const $ = (id) => document.getElementById(id);
@@ -155,56 +165,47 @@
       return;
     }
 
-    /* Siempre pantalla de carga — nunca app vacía */
-    document.body.classList.remove('is-ready');
-    document.documentElement.classList.remove('has-cache');
-    showLoadModal('Cargando', 'Espera un momento, por favor…');
-
     bind();
     updateConnBadge();
-    await QB.workers.load();
-    if (QB.descartes && QB.descartes.load) {
-      await QB.descartes.load(true);
-    }
-    if (QB.supervisors && QB.supervisors.enrichFromWorkers) {
-      QB.supervisors.enrichFromWorkers();
-    }
 
+    /* Caché al toque (ya la tenemos). Última hoja se pide atrás, sin bloquear. */
+    const cached = QB.api.getCachedPack ? QB.api.getCachedPack() : null;
+    const cachedHoy = String((cached && cached.hoy) || '').trim();
     let painted = false;
-    try {
-      const cached = QB.api.getCachedPack && QB.api.getCachedPack();
-      const hasCache = !!(cached && (cached.data || []).length);
 
-      if (hasCache) {
-        applyPack(cached);
-        painted = true;
-        revealApp();
-        QB.export.toast('Ya lista · ' + ((cached.data && cached.data.length) || 0) + ' personas', 'ok');
-        showSyncBanner(
-          'Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.'
-        );
-        const r = await QB.api.refresh();
-        hideSyncBanner();
-        if ((r.pack.data || []).length) {
-          applyPack(r.pack);
-          painted = true;
-        }
-        if (r.changed && !r.error) {
-          flashHero();
-          QB.export.toast('Se actualizó · ' + ((r.pack.data && r.pack.data.length) || 0) + ' personas', 'ok');
-        }
-      } else {
-        const r = await QB.api.refresh();
-        if ((r.pack.data || []).length) {
-          applyPack(r.pack);
-          painted = true;
-        }
-        revealApp();
-        const n = (r.pack.data && r.pack.data.length) || 0;
-        if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
-        else QB.export.toast('Sin datos del día · contacta operaciones', 'warn');
+    const extrasP = Promise.all([
+      QB.workers.load(),
+      QB.descartes && QB.descartes.load ? QB.descartes.load() : Promise.resolve(),
+      QB.plano && QB.plano.load ? QB.plano.load() : Promise.resolve()
+    ]).then(function () {
+      if (QB.supervisors && QB.supervisors.enrichFromWorkers) {
+        QB.supervisors.enrichFromWorkers();
       }
+      const p = state.report || (QB.api.getCachedPack && QB.api.getCachedPack());
+      if (p && (p.data || []).length) {
+        applyPack(p, {
+          skipPrefetch: true,
+          requestedFecha: state.fecha || p.hoy || cachedHoy,
+          force: true
+        });
+      }
+    });
 
+    if (cached && (cached.data || []).length) {
+      extrasP.catch(function () {});
+      applyPack(cached, { skipPrefetch: true, requestedFecha: cachedHoy, force: true });
+      painted = true;
+      revealApp();
+      /* El día ya está en pantalla. El refresco de la API sigue atrás, sin dejar la barra en 90%. */
+      hideSyncBanner();
+    } else {
+      document.body.classList.remove('is-ready');
+      showLoadModal('Cargando', 'Última hoja de cosecha…');
+    }
+
+    function attachLiveWatchers() {
+      if (attachLiveWatchers._done) return;
+      attachLiveWatchers._done = true;
       QB.api.startDataWatch();
       window.addEventListener('qb:data-updated', (e) => {
         const detail = (e && e.detail) || {};
@@ -224,33 +225,78 @@
       window.addEventListener('qb:fecha-refreshed', (e) => {
         const detail = (e && e.detail) || {};
         const f = String(detail.fecha || '').trim();
+        const packIn = detail.pack;
+        if (f && packIn) {
+          paintFechaVariedad(f, packIn);
+          refreshVarietyWall();
+        }
         if (!f || f !== state.fecha) return;
         const pack = detail.pack;
         if (!pack || !(pack.data || []).length) return;
         if (detail.fromCache) return;
         applyPack(pack, { skipPrefetch: true, requestedFecha: f });
+        hideSyncBanner();
         const n = (pack.data && pack.data.length) || 0;
         QB.export.toast(
           'Datos actualizados · ' + fechaLabelText(f) + ' · ' + fmt(n) + ' personas',
           'ok'
         );
       });
-    } catch (err) {
-      hideSyncBanner();
-      const cached = QB.api.getCachedPack && QB.api.getCachedPack();
-      if (cached && (cached.data || []).length) {
-        applyPack(cached);
+    }
+
+    attachLiveWatchers();
+
+    try {
+      const r = await QB.api.refresh({ fecha: '' });
+      extrasP.catch(function () {});
+      const pack = r.pack;
+      const latest = String((pack && pack.hoy) || '').trim();
+      if (pack && (pack.data || []).length) {
+        const sameDay = painted && cachedHoy && cachedHoy === latest;
+        const sameVer =
+          sameDay &&
+          QB.api._versionOf &&
+          QB.api._versionOf(cached) === QB.api._versionOf(pack);
+        if (!sameVer) {
+          applyPack(pack, { skipPrefetch: true, requestedFecha: latest, force: true });
+        }
         painted = true;
-        revealApp();
+      }
+      if (QB.api.prefetchFechas && pack && pack.hojas) {
+        QB.api.prefetchFechas(pack.hojas, latest);
+      }
+      revealApp();
+      hideSyncBanner();
+      const n = (pack && pack.data && pack.data.length) || 0;
+      if (r.error && painted) {
+        QB.export.toast('Sin red · última hoja en caché', 'warn');
+      } else if (n && (!cachedHoy || cachedHoy !== latest)) {
+        var hojaNom = pack.ultimaHoja || ((pack.hojas || []).find(function (h) { return h.fecha === latest; }) || {}).nombre || '';
+        QB.export.toast('Última hoja' + (hojaNom ? ' · ' + hojaNom : '') + ' · ' + n + ' personas', 'ok');
+      } else if (!n && !painted) {
+        QB.export.toast('Sin datos del día · contacta operaciones', 'warn');
+      }
+    } catch (err) {
+      if (cachedHoy && painted) {
+        hideSyncBanner();
         QB.export.toast('Sin red · sigues con el último guardado', 'warn');
       } else {
-        revealApp();
-        QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
+        hideSyncBanner();
+        const fallback = QB.api.getCachedPack && QB.api.getCachedPack();
+        if (fallback && (fallback.data || []).length) {
+          applyPack(fallback);
+          painted = true;
+          revealApp();
+          QB.export.toast('Sin red · sigues con el último guardado', 'warn');
+        } else {
+          revealApp();
+          QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
+        }
       }
     } finally {
       if (!document.body.classList.contains('is-ready')) revealApp();
       hideLoadModal();
-      if (!painted) hideSyncBanner();
+      hideSyncBanner();
     }
   }
 
@@ -406,9 +452,61 @@
     if (!silent) hideSyncBanner();
   }
 
+  function stripHiddenLicPack(pack) {
+    if (!pack) return pack;
+    if (!QB.supervisors || !QB.supervisors.isHiddenLic) return pack;
+    const src = pack.data || [];
+    const data = src.filter((r) => !QB.supervisors.isHiddenLic(r.grupo));
+    const kpisIn = pack.kpis || {};
+    const porGrupo = Array.isArray(kpisIn.porGrupo)
+      ? kpisIn.porGrupo.filter((g) => !QB.supervisors.isHiddenLic(g.grupo))
+      : kpisIn.porGrupo;
+    if (data.length === src.length && porGrupo === kpisIn.porGrupo) return pack;
+    const merged = mergeByWorker({ data });
+    const totalCajas = merged.reduce((s, p) => s + (Number(p.c) || 0), 0);
+    const kpis = Object.assign({}, kpisIn, {
+      porGrupo,
+      totalGrupos: Array.isArray(porGrupo) ? porGrupo.length : kpisIn.totalGrupos,
+      totalTrabajadores: merged.length,
+      totalCajas,
+      promedioCajasPorTrabajador: merged.length ? totalCajas / merged.length : 0
+    });
+    return Object.assign({}, pack, { data, kpis });
+  }
+
   function applyPack(pack, opts) {
     if (!pack) return;
     opts = opts || {};
+    const requestedEarly = opts.requestedFecha ? String(opts.requestedFecha).trim() : '';
+    const packFechaEarly = String(pack.hoy || '').trim();
+    if (requestedEarly && packFechaEarly && requestedEarly !== packFechaEarly) return;
+    if (QB.workers && QB.workers.ready && QB.api && QB.api._enrichReport) {
+      pack = QB.api._enrichReport(pack);
+    }
+    const counted = countUniqueWorkers(pack);
+    const stamped = Number(pack.cosechadoresTotal) || 0;
+    const cosechadoresTotal = Math.max(counted, stamped);
+    const countedGroups = countUniqueGroups(pack);
+    const stampedGroups = Number(pack.gruposTotal) || 0;
+    const gruposTotal = Math.max(countedGroups, stampedGroups);
+    pack = stripHiddenLicPack(pack);
+    pack.cosechadoresTotal = cosechadoresTotal;
+    state.cosechadoresTotal = cosechadoresTotal;
+    pack.gruposTotal = gruposTotal;
+    state.gruposTotal = gruposTotal;
+    opts = opts || {};
+    const paintKey =
+      String(pack.actualizado || '') +
+      '|' +
+      String(pack.hoy || '') +
+      '|' +
+      String(pack.count || (pack.data || []).length) +
+      '|' +
+      String((pack.kpis && pack.kpis.totalCajas) || 0) +
+      '|' +
+      String(opts.requestedFecha || state.fecha || pack.hoy || '');
+    if (!opts.force && state._paintKey === paintKey && state.report) return;
+    state._paintKey = paintKey;
     state.syncedAt = pack.actualizado || '';
     state.hojas = pack.hojas || [];
     const fechasDisp = (pack.hojas || []).map((h) => h.fecha).filter(Boolean);
@@ -452,7 +550,8 @@
     if (state.fecha && pack) state.comparePacks[state.fecha] = pack;
     sortRows();
 
-    /* Pintar todo con el pack del día activo */
+    /* Pintar todo con el pack del día activo · el historial modal no se toca */
+    const histOpen = isHistorialModalOpen();
     renderHero(pack);
     renderPeople(pack);
     renderGrupoMap(pack);
@@ -460,8 +559,10 @@
     paintActiveTabHeavy();
     if (state._chartsTimer) clearTimeout(state._chartsTimer);
     scheduleCharts(pack);
-    setTab(state.tab);
+    if (!histOpen) setTab(state.tab);
     updateConnBadge();
+    notifyHistorialFechasNuevas();
+    if (histOpen) refreshHistorialFechaAlert();
 
     if (!opts.skipPrefetch && QB.api.prefetchFechas) {
       QB.api.prefetchFechas(pack.hojas, state.fecha);
@@ -569,6 +670,33 @@
         openStatTipModal(stat.getAttribute('data-stat-tip'));
         return;
       }
+      const kgBtn = e.target.closest('[data-kg-factor]');
+      if (kgBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = Number(kgBtn.getAttribute('data-kg-factor'));
+        if (!next) return;
+        kgFactor = next;
+        const jarras = Number(kgBtn.getAttribute('data-jarras')) || 0;
+        const kgEl = document.getElementById('heroKgValue');
+        const kgMobile = document.querySelector('.hero-banner-mobile-only .value-kg');
+        const kgTxt = fmt(jarras * kgFactor);
+        if (kgEl) kgEl.textContent = kgTxt;
+        if (kgMobile) kgMobile.textContent = kgTxt;
+        kgBtn
+          .closest('.hero-kg-factors')
+          ?.querySelectorAll('[data-kg-factor]')
+          .forEach((b) => {
+            const on = Number(b.getAttribute('data-kg-factor')) === kgFactor;
+            b.classList.toggle('is-on', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+          });
+        const wrap = kgBtn.closest('.hero-side-total-item');
+        if (wrap) {
+          wrap.title = fmt(jarras) + ' jarras · ' + kgTxt + ' kg (× ' + kgFactor + ')';
+        }
+        return;
+      }
       if (e.target.closest('#fechaDdBtn')) {
         e.preventDefault();
         e.stopPropagation();
@@ -628,7 +756,10 @@
     const second = people[1];
     const nPeople = people.length || k.totalTrabajadores || 0;
     const avg = k.promedioCajasPorTrabajador || (nPeople ? (k.totalCajas || 0) / nPeople : 0);
-    const lt40 = people.filter((p) => Number(p.c || 0) < COMPARE_LT40).length;
+    const lt40 = people.filter((p) => {
+      const c = Number(p.c || 0);
+      return c > 0 && c <= COMPARE_LT40;
+    }).length;
     const gt40 = people.filter((p) => Number(p.c || 0) >= COMPARE_GTE58).length;
     const top5G = (k.porGrupo || []).slice(0, 5);
 
@@ -637,10 +768,10 @@
         title: 'Cosechadores',
         sub: fecha,
         rows: [
-          { label: 'Personas con jarras', value: fmt(nPeople) },
+          { label: 'Personas con jarras', value: fmt(state.cosechadoresTotal || nPeople) },
           { label: 'Promedio jarras / persona', value: fmt(avg) },
           { label: 'Total jarras del día', value: fmt(k.totalCajas) },
-          { label: 'Menos de ' + COMPARE_LT40 + ' jarras', value: fmt(lt40) + ' personas' },
+          { label: 'Hasta ' + COMPARE_LT40 + ' jarras', value: fmt(lt40) + ' personas' },
           { label: COMPARE_GTE58 + ' o más jarras', value: fmt(gt40) + ' personas' },
           { label: 'Filas registradas', value: fmt(k.totalFilas) }
         ],
@@ -662,7 +793,7 @@
         title: 'Grupos LIC',
         sub: fecha,
         rows: [
-          { label: 'Grupos activos', value: fmt(k.totalGrupos || top5G.length) },
+          { label: 'Grupos activos', value: fmt(state.gruposTotal || k.totalGrupos || top5G.length) },
           { label: 'Total jarras (todos)', value: fmt(k.totalCajas) }
         ],
         extra: `<div class="stat-tip-block"><p class="stat-tip-block-title">Top grupos del día</p>${listHtml}</div>`,
@@ -776,21 +907,16 @@
     };
 
     setBusy(true);
-    startSyncProgress({
-      startText: 'Cargando ' + label + '… Aún puedes usar la app.'
-    });
 
     const finishOk = (pack, fromCache, wantFecha) => {
       setBusy(false);
+      hideSyncBanner();
       if (wantFecha && pack.hoy && pack.hoy !== wantFecha) {
         QB.export.toast('Aviso: datos recibidos para otra fecha; recalculando…', 'warn');
       }
       applyPack(pack, { requestedFecha: want });
       flashHero();
       const n = (pack.data && pack.data.length) || 0;
-      finishSyncProgress(
-        '100% · ' + label + ' · ' + fmt(n) + (fromCache ? ' (cache)' : ' registros.')
-      );
       const msg = fromCache
         ? 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas (cache)'
         : 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas';
@@ -809,11 +935,12 @@
       const instant = QB.api.getPackForFecha(want);
       if (instant && (instant.data || []).length) {
         finishOk(instant, true, want);
-        QB.api
-          .cargarTodo({ fecha: want, background: true, allowCacheFallback: true })
-          .catch(function () {});
         return;
       }
+
+      startSyncProgress({
+        startText: 'Cargando ' + label + '… Aún puedes usar la app.'
+      });
 
       const pack = await QB.api.cargarTodo({
         fecha: want,
@@ -830,10 +957,31 @@
     }
   }
 
+  function variedadKey(label) {
+    return String(label || '').trim().toLowerCase();
+  }
+
+  /** Magica y Sekoya Pop no entran en la misma comparación ni en el mismo ratio. */
+  function mismaVariedadQueActiva(fechaKey) {
+    const key = String(fechaKey || '').trim();
+    if (!key || key === state.fecha) return true;
+    const active = variedadKey(variedadLabelForFecha(state.fecha));
+    if (!active) return true;
+    const other = variedadKey(variedadLabelForFecha(key));
+    if (!other) return true;
+    return other === active;
+  }
+
+  function fechasMismaVariedad(list) {
+    return (list || []).filter((f) => mismaVariedadQueActiva(f));
+  }
+
   function getCompareActiveFechas() {
-    return (state.fechaOpts || [])
-      .map((o) => o.value)
-      .filter((f) => f && !state.compareExcluded[f]);
+    return fechasMismaVariedad(
+      (state.fechaOpts || [])
+        .map((o) => o.value)
+        .filter((f) => f && !state.compareExcluded[f])
+    );
   }
 
   function compareActiveSig(fechas) {
@@ -875,7 +1023,7 @@
   }
 
   function getRatioFechas() {
-    const opts = (state.fechaOpts || []).map((o) => o.value).filter(Boolean);
+    const opts = fechasMismaVariedad((state.fechaOpts || []).map((o) => o.value).filter(Boolean));
     if (state.ratioMode === 'todas') return opts.slice();
     if (state.ratioMode === 'custom') {
       const sel = opts.filter((f) => state.ratioSelected[f]);
@@ -888,7 +1036,8 @@
     const meta = $('ratioSheetMeta');
     if (!meta) return;
     const fechas = getRatioFechas();
-    const total = (state.fechaOpts || []).length;
+    const total = fechasMismaVariedad((state.fechaOpts || []).map((o) => o.value).filter(Boolean)).length;
+    const varLabel = variedadLabelForFecha(state.fecha);
     if (!fechas.length) {
       meta.textContent = 'Elige al menos una fecha';
       return;
@@ -898,11 +1047,12 @@
       return (info && info.short) || fechaLabelText(f);
     });
     if (state.ratioMode === 'solo' || fechas.length === 1) {
-      meta.textContent = 'Solo ' + (labels[0] || fechas[0]);
+      meta.textContent = 'Solo ' + (labels[0] || fechas[0]) + (varLabel ? ' · ' + varLabel : '');
       return;
     }
     if (state.ratioMode === 'todas' || fechas.length === total) {
-      meta.textContent = 'Todas · ' + fechas.length + ' fechas unidas';
+      meta.textContent =
+        (varLabel ? varLabel + ' · ' : '') + 'Todas · ' + fechas.length + ' fechas unidas';
       return;
     }
     meta.textContent = fechas.length + ' de ' + total + ' · ' + labels.join(' · ');
@@ -911,7 +1061,7 @@
   function renderRatioSheetBar() {
     const host = $('ratioSheetChips');
     if (!host) return;
-    const opts = state.fechaOpts || [];
+    const opts = (state.fechaOpts || []).filter((o) => mismaVariedadQueActiva(o.value));
     const active = new Set(getRatioFechas());
     const btnSolo = $('btnRatioSolo');
     const btnTodas = $('btnRatioTodas');
@@ -1007,16 +1157,30 @@
       if (cachedOk) return;
       jobs.push(
         QB.api.cargarTodo({ fecha: fecha, allowCacheFallback: true }).then((p) => {
-          if (!p || !(p.data || []).length) return;
-          /* Guardar siempre bajo la fecha pedida */
-          state.comparePacks[fecha] = p;
-          if (p.hoy && String(p.hoy) !== String(fecha)) {
-            state.comparePacks[p.hoy] = p;
-          }
+          storeComparePack(fecha, p);
         })
       );
     });
     if (jobs.length) await Promise.all(jobs);
+  }
+
+  function storeComparePack(fecha, pack) {
+    if (!pack || !(pack.data || []).length) return;
+    const key = String(fecha || '').trim();
+    const hoy = String(pack.hoy || '').trim();
+    if (hoy && key && hoy !== key) {
+      state.comparePacks[hoy] = pack;
+      if (state.comparePacks[key] && String(state.comparePacks[key].hoy || '') === key) return;
+      delete state.comparePacks[key];
+      return;
+    }
+    if (key) state.comparePacks[key] = pack;
+  }
+
+  function packCoincideFecha(pack, key) {
+    if (!pack || !(pack.data || []).length) return false;
+    const hoy = String(pack.hoy || '').trim();
+    return !hoy || hoy === String(key || '').trim();
   }
 
   function packForRatioFecha(f) {
@@ -1059,12 +1223,13 @@
       /* ignore; chart shows what we have */
     }
     if (token !== state._ratioChartToken) return;
-    const rows = buildRatioRows(fechas);
+    const fechasOk = getRatioFechas();
+    const rows = buildRatioRows(fechasOk);
     charts.renderDist(rows, opts);
-    charts._insightDist(rows, { nFechas: fechas.length });
+    charts._insightDist(rows, { nFechas: fechasOk.length });
     if (typeof charts.renderDistGt70 === 'function') {
       charts.renderDistGt70(rows, opts);
-      charts._insightDistGt70(rows, { nFechas: fechas.length });
+      charts._insightDistGt70(rows, { nFechas: fechasOk.length });
     }
     updateRatioSheetMeta();
     requestAnimationFrame(() => {
@@ -1406,23 +1571,30 @@
     const meta = $('compareMeta');
     if (!meta) return;
     const active = getCompareActiveFechas();
-    const total = (state.fechaOpts || []).length;
+    const pool = fechasMismaVariedad((state.fechaOpts || []).map((o) => o.value).filter(Boolean));
+    const total = pool.length;
+    const varLabel = variedadLabelForFecha(state.fecha);
     if (total < 2) {
-      meta.textContent = 'Necesitas al menos 2 hojas de cosecha';
+      meta.textContent = varLabel
+        ? varLabel + ' · una sola hoja, no se junta con otra variedad'
+        : 'Necesitas al menos 2 hojas de cosecha';
       return;
     }
     if (active.length < 2) {
-      meta.textContent = `Incluye al menos 2 hojas (${active.length} de ${total})`;
+      meta.textContent = varLabel
+        ? `${varLabel} · incluye al menos 2 hojas (${active.length} de ${total})`
+        : `Incluye al menos 2 hojas (${active.length} de ${total})`;
       return;
     }
     const labels = active.map((f) => {
       const info = fechaInfoFor(f);
       return (info && info.short) || fechaLabelText(f);
     });
+    const head = varLabel ? varLabel + ' · ' : '';
     meta.textContent =
       active.length === total
-        ? `${active.length} hojas · ${labels.join(' · ')}`
-        : `${active.length} de ${total} hojas · ${labels.join(' · ')}`;
+        ? `${head}${active.length} hojas · ${labels.join(' · ')}`
+        : `${head}${active.length} de ${total} hojas · ${labels.join(' · ')}`;
   }
 
   function renderCompareSheetBar() {
@@ -1430,7 +1602,7 @@
     const exHost = $('compareExcludedChips');
     const exWrap = $('compareExcludedWrap');
     if (!host) return;
-    const opts = state.fechaOpts || [];
+    const opts = (state.fechaOpts || []).filter((o) => mismaVariedadQueActiva(o.value));
     const active = [];
     const excluded = [];
     opts.forEach((o) => {
@@ -1745,10 +1917,15 @@
     if (active.length < 2) {
       const el = $('compareContent');
       if (el) {
-        el.innerHTML =
-          '<p class="compare-empty">Incluye al menos <strong>2 hojas</strong>. Toca una hoja excluida abajo para volver a incluirla.</p>';
+        const varLabel = variedadLabelForFecha(state.fecha);
+        el.innerHTML = varLabel
+          ? '<p class="compare-empty"><strong>' +
+            escapeHtml(varLabel) +
+            '</strong> se compara solo con hojas de la misma variedad.</p>'
+          : '<p class="compare-empty">Incluye al menos <strong>2 hojas</strong>. Toca una hoja excluida abajo para volver a incluirla.</p>';
       }
       updateCompareMeta();
+      renderCompareSheetBar();
       return;
     }
 
@@ -1775,28 +1952,35 @@
         if (need) {
           jobs.push(
             QB.api.cargarTodo({ fecha: fecha, allowCacheFallback: true }).then((p) => {
-              if (p && (p.data || []).length) state.comparePacks[fecha] = p;
+              storeComparePack(fecha, p);
             })
           );
         }
       });
       if (jobs.length) await Promise.all(jobs);
 
+      const activeNow = getCompareActiveFechas();
       const packs = {};
-      active.forEach((fecha) => {
+      activeNow.forEach((fecha) => {
         if (state.comparePacks[fecha]) packs[fecha] = state.comparePacks[fecha];
       });
+      renderCompareSheetBar();
+      updateCompareMeta();
       if (Object.keys(packs).length < 2) {
         if (el) {
-          el.innerHTML =
-            '<p class="compare-empty">No hay suficientes datos cargados. Intenta de nuevo.</p>';
+          const varLabel = variedadLabelForFecha(state.fecha);
+          el.innerHTML = varLabel
+            ? '<p class="compare-empty"><strong>' +
+              escapeHtml(varLabel) +
+              '</strong> se compara solo con hojas de la misma variedad.</p>'
+            : '<p class="compare-empty">No hay suficientes datos cargados. Intenta de nuevo.</p>';
         }
         return;
       }
 
-      state._compareLoadedSig = sig;
+      state._compareLoadedSig = compareActiveSig(activeNow);
       state._compareDirty = false;
-      renderCompareContent(packs, active);
+      renderCompareContent(packs, activeNow);
     } catch (err) {
       if (el) {
         el.innerHTML =
@@ -2450,6 +2634,8 @@
     if (alarmIco && QB.icons.alarm) alarmIco.innerHTML = QB.icons.alarm(22);
     const refreshIco = $('icoRefresh');
     if (refreshIco && QB.icons.refresh) refreshIco.innerHTML = QB.icons.refresh(12);
+    const authIco = $('icoAuthGate');
+    if (authIco && QB.icons.user) authIco.innerHTML = QB.icons.user(13);
     const workersIco = $('workersSearchIco');
     if (workersIco) workersIco.innerHTML = QB.icons.search(18);
     const gruposIco = $('gruposSearchIco');
@@ -2635,6 +2821,9 @@
       renderRatioSheetBar();
       renderRatioChart();
     }
+    if (state.tab === 'historial') {
+      renderHistorialPage();
+    }
     requestAnimationFrame(() => {
       if (QB.charts && QB.charts.resizeAll) QB.charts.resizeAll();
       if (state.tab === 'comparacion' && state._compareLast?.model?.lt40BySupervisor) {
@@ -2746,26 +2935,33 @@
       });
     }
 
-    const bindExcel = (id, mode) => {
+    const bindExcel = (id, mode, cut) => {
       const btn = $(id);
       if (!btn) return;
       btn.addEventListener('click', () => {
         const all = peopleOf(state.report);
-        const people = all.filter((r) => {
+        const n = Number(cut) > 0 ? Number(cut) : 30;
+        /* Mismo corte que las barras: ≤N incluye N; el otro archivo empieza en N+1. */
+        const withJarras = all.filter((r) => Number(r.c || 0) > 0);
+        const people = withJarras.filter((r) => {
           const c = Number(r.c || 0);
-          return mode === 'gt40' ? c >= COMPARE_LT40 : c < COMPARE_LT40;
+          return mode === 'gt' ? c > n : c <= n;
         });
+        const iso = activeFechaIso();
         QB.export.excelPeopleByJarras({
-          mode,
+          mode: mode === 'gt' ? 'gt40' : 'lt40',
+          cut: n,
           people,
-          totalPeople: all.length,
-          fecha: state.fecha || '',
+          totalPeople: withJarras.length,
+          fecha: iso || '',
           fechaLabel: fechaLabelText(state.fecha)
         });
       });
     };
-    bindExcel('btnExcelLt40', 'lt40');
-    bindExcel('btnExcelGt40', 'gt40');
+    bindExcel('btnExcelLt40', 'lt', 30);
+    bindExcel('btnExcelGt40', 'gt', 30);
+    bindExcel('btnExcelPersonasLt40', 'lt', 40);
+    bindExcel('btnExcelPersonasGt40', 'gt', 40);
     const btnExcelRatioGrupos = $('btnExcelRatioGrupos');
     if (btnExcelRatioGrupos) {
       btnExcelRatioGrupos.addEventListener('click', () => exportGruposRatioExcel(btnExcelRatioGrupos));
@@ -2773,12 +2969,6 @@
     const btnExcelPersonasDia = $('btnExcelPersonasDia');
     if (btnExcelPersonasDia) {
       btnExcelPersonasDia.addEventListener('click', () => exportPersonasDiaExcel(btnExcelPersonasDia));
-    }
-    const btnImgPersonasModulos = $('btnImgPersonasModulos');
-    if (btnImgPersonasModulos) {
-      btnImgPersonasModulos.addEventListener('click', () =>
-        exportPersonasModulosImage(btnImgPersonasModulos)
-      );
     }
 
     const btnExportReportes = $('btnExportReportesPdf');
@@ -2832,6 +3022,10 @@
     if (btnRefresh) {
       btnRefresh.addEventListener('click', () => openRefreshModal());
     }
+    const btnAuthGate = $('btnAuthGate');
+    if (btnAuthGate) {
+      btnAuthGate.addEventListener('click', () => openAuthHistorialModal());
+    }
 
     $('modalRoot').addEventListener('click', (e) => {
       const root = $('modalRoot');
@@ -2861,7 +3055,6 @@
     const hasData = !!(state.rows && state.rows.length);
     const fechaRoot = document.getElementById('fechaDd');
     const fechaBtn = document.getElementById('fechaDdBtn');
-    let usedProgress = false;
 
     if (btn) btn.classList.add('is-busy');
     if (text) text.textContent = '…';
@@ -2871,11 +3064,6 @@
     if (!hasData) {
       document.body.classList.remove('is-ready');
       showLoadModal('Cargando', 'Espera un momento, por favor…');
-    } else {
-      usedProgress = true;
-      startSyncProgress({
-        startText: 'Trayendo la última fecha… Aún puedes usar la app.'
-      });
     }
 
     try {
@@ -2883,6 +3071,7 @@
       const r = await QB.api.refresh({ fecha: '' });
       const pack = r.pack;
       const latest = String((pack && pack.hoy) || '').trim();
+      hideSyncBanner();
       if ((pack && pack.data && pack.data.length) || !hasData) {
         applyPack(pack, { requestedFecha: latest || '' });
       }
@@ -2891,32 +3080,25 @@
         const n = (pack.data && pack.data.length) || 0;
         const label = latest ? fechaLabelText(latest) : 'día actual';
         QB.export.toast('Ya lista · ' + label + ' · ' + n + ' personas', 'ok');
-        if (usedProgress) {
-          finishSyncProgress('100% · última fecha lista · ' + fmt(n) + ' registros.');
-        }
       } else if (r.error && hasData) {
         QB.export.toast('Sin red · sigues con lo último', 'warn');
-        if (usedProgress) finishSyncProgress('Sin red · sigues con lo guardado.');
       } else if (!hasData) {
         const n = (pack.data && pack.data.length) || 0;
         if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
         else QB.export.toast('Sin datos del día', 'warn');
-      } else if (usedProgress) {
-        finishSyncProgress('100% · última fecha al día.');
       }
     } catch (err) {
+      hideSyncBanner();
       const cached = QB.api.getCachedPack && QB.api.getCachedPack();
       if (cached && (cached.data || []).length) {
         applyPack(cached);
         QB.export.toast('Error de red · mostrando cache', 'warn');
-        if (usedProgress) finishSyncProgress('Error de red · mostrando lo guardado.');
       } else {
         QB.export.toast('Error API: ' + (err && err.message ? err.message : 'error'), 'warn');
-        if (usedProgress) finishSyncProgress('No se pudo actualizar · intenta de nuevo.');
       }
     } finally {
       hideLoadModal();
-      if (!usedProgress) hideSyncBanner();
+      hideSyncBanner();
       document.body.classList.add('is-ready');
       if (btn) btn.classList.remove('is-busy');
       if (text) text.textContent = 'Actualizar';
@@ -2967,10 +3149,106 @@
     ].join('|');
   }
 
+  /** LIC distintos del día, también los que el mapa no lista. */
+  function countUniqueGroups(report) {
+    const seen = new Set();
+    const add = (g) => {
+      const raw = String(g || '').trim();
+      if (!raw) return;
+      const key = QB.supervisors && QB.supervisors.licKey ? QB.supervisors.licKey(raw) : raw.toUpperCase();
+      if (key) seen.add(key);
+    };
+    for (const r of (report && report.data) || []) add(r.grupo);
+    const por = report && report.kpis && report.kpis.porGrupo;
+    if (Array.isArray(por)) por.forEach((g) => add(g && g.grupo));
+    return seen.size;
+  }
+
+  /** Variedad del día y los huertos de esa variedad. No junta Magica con Sekoya Pop. */
+  function dayOrigen(report) {
+    const byVar = new Map();
+    for (const r of (report && report.data) || []) {
+      const variedad = String((r && r.variedad) || '').trim();
+      if (!variedad) continue;
+      const vk = variedad.toLowerCase();
+      if (!byVar.has(vk)) byVar.set(vk, { label: variedad, huertos: new Map(), people: new Set() });
+      const bucket = byVar.get(vk);
+      const huerto = String((r && r.huerto) || '').trim();
+      if (huerto) bucket.huertos.set(huerto.toLowerCase(), huerto);
+      const ci = String((r && r.ci) || '').replace(/\D/g, '');
+      if (ci) bucket.people.add(ci);
+    }
+    return [...byVar.values()]
+      .map((v) => ({
+        label: v.label,
+        n: v.people.size,
+        huertos: [...v.huertos.values()].sort((a, b) => a.localeCompare(b, 'es'))
+      }))
+      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'es'));
+  }
+
+  function variedadLabelForFecha(fechaKey) {
+    const key = String(fechaKey || '').trim();
+    let pack = null;
+    if (key && String(state.fecha || '') === key && packCoincideFecha(state.report, key)) pack = state.report;
+    else if (key && state.comparePacks && packCoincideFecha(state.comparePacks[key], key)) pack = state.comparePacks[key];
+    else if (key && QB.api && QB.api.getPackForFecha) pack = QB.api.getPackForFecha(key);
+    if (!pack) return '';
+    return dayOrigen(pack).map((v) => v.label).join(' · ');
+  }
+
+  function paintFechaVariedad(fechaKey, pack) {
+    if (pack && pack.hoy && String(pack.hoy) !== String(fechaKey)) return;
+    const label = dayOrigen(pack).map((v) => v.label).join(' · ');
+    if (!label) return;
+    document.querySelectorAll('.fecha-dd-opt[data-value]').forEach((btn) => {
+      if (btn.getAttribute('data-value') !== String(fechaKey)) return;
+      const el = btn.querySelector('.fecha-dd-opt-var');
+      if (el) el.textContent = label;
+    });
+  }
+
+  function refreshVarietyWall() {
+    renderRatioSheetBar();
+    renderCompareSheetBar();
+    updateCompareMeta();
+  }
+
+  /** Huertos del día, con personas distintas en cada uno. */
+  function dayHuertos(report) {
+    const people = new Map();
+    const labels = new Map();
+    for (const r of (report && report.data) || []) {
+      const raw = String((r && r.huerto) || '').trim();
+      if (!raw) continue;
+      const key = raw.toLowerCase();
+      if (!labels.has(key)) labels.set(key, raw);
+      const ci = String((r && r.ci) || '').replace(/\D/g, '');
+      if (!ci) continue;
+      if (!people.has(key)) people.set(key, new Set());
+      people.get(key).add(ci);
+    }
+    return [...labels.entries()]
+      .map(([key, label]) => ({ label, n: (people.get(key) && people.get(key).size) || 0 }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }
+
+  /** Personas distintas del día. Licapa II y Licapa III no se suman aparte. */
+  function countUniqueWorkers(report) {
+    const seen = new Set();
+    for (const r of (report && report.data) || []) {
+      const key = String(r.ci || '').replace(/\D/g, '');
+      if (!key) continue;
+      seen.add(key);
+    }
+    return seen.size;
+  }
+
   /** Una fila por persona (suma jarras del día cargado). */
   function mergeByWorker(report) {
     const byCi = new Map();
     for (const r of report.data || []) {
+      if (QB.supervisors && QB.supervisors.isHiddenLic && QB.supervisors.isHiddenLic(r.grupo)) continue;
       const key = String(r.ci || '');
       if (!key) continue;
       const cur = byCi.get(key);
@@ -3117,6 +3395,36 @@
     }, 680);
   }
 
+  /** Módulos oficiales del plano (M1–M5, M10) con jarras + primer turno. */
+  function dayModulosYInicio(report) {
+    const iso = fechaIsoKey(state.fecha || '') || limaHoyIso();
+    const official = (QB.plano && QB.plano.labels && QB.plano.labels()) || ['M1', 'M2', 'M3', 'M4', 'M5', 'M10'];
+    const total = official.length;
+    const mods = new Set();
+    const turnos = [];
+    peopleOf(report).forEach((r) => {
+      const map = personModulosJarras(r, iso);
+      map.forEach((c, m) => {
+        if (c > 0 && m) mods.add(String(m).toUpperCase());
+      });
+      (r.lotes || []).forEach((l) => {
+        if ((Number(l && l.c) || 0) <= 0) return;
+        const tm = String((l && l.lote) || '').match(/T\s*0*(\d+)/i);
+        if (tm) turnos.push(Number(tm[1]));
+      });
+      if ((Number(r.c) || 0) > 0) {
+        const tm2 = String(r.turno || '').match(/T\s*0*(\d+)/i);
+        if (tm2) turnos.push(Number(tm2[1]));
+      }
+    });
+    const list = official.filter((m) => mods.has(m));
+    const extra = [...mods]
+      .filter((m) => official.indexOf(m) < 0)
+      .sort((a, b) => (parseInt(a.replace(/\D/g, ''), 10) || 0) - (parseInt(b.replace(/\D/g, ''), 10) || 0));
+    const inicio = turnos.length ? 'T' + Math.min.apply(null, turnos) : '';
+    return { list: list.concat(extra), inicio, worked: list.length, total };
+  }
+
   function renderHero(report) {
     const menuWasOpen = document.getElementById('fechaDd')?.classList.contains('is-open');
     const k = (report && report.kpis) || {};
@@ -3129,9 +3437,36 @@
     const top = people[0];
     const topG = (k.porGrupo || [])[0];
     const syncAt = shortSyncTime(state.syncedAt || (report && report.actualizado) || QB.api.getLastSync() || '');
-    const nPeople = people.length || k.totalTrabajadores || 0;
-    const nGrupos = k.totalGrupos || (k.porGrupo || []).length || 0;
-    const avgJarras = k.promedioCajasPorTrabajador || (nPeople ? (k.totalCajas || 0) / nPeople : 0);
+    const nListed = people.length || k.totalTrabajadores || 0;
+    const nPeople = state.cosechadoresTotal || nListed;
+    const origen = dayOrigen(report);
+    const origenUna = origen.length === 1 ? origen[0] : null;
+    const origenNombre = origenUna
+      ? origenUna.label
+      : origen.map((v) => v.label + ' · ' + fmt(v.n)).join(' · ');
+    const origenHuertos = origenUna ? origenUna.huertos.join(' y ') : '';
+    const origenTitle = origenUna
+      ? fmt(nPeople) + ' cosechadores · ' + origenNombre + (origenHuertos ? ' · ' + origenHuertos : '')
+      : origen.map((v) => fmt(v.n) + ' ' + v.label).join(' · ');
+    const nGrupos = state.gruposTotal || k.totalGrupos || (k.porGrupo || []).length || 0;
+    const dayMods = dayModulosYInicio(report);
+    const modsLabel = dayMods.list.length ? dayMods.list.join(' · ') : '—';
+    const modsChips = dayMods.list.length
+      ? dayMods.list
+          .map((m) => {
+            const info = QB.plano && QB.plano.moduleOf ? QB.plano.moduleOf(QB.plano.parseModId(m)) : null;
+            const badge = info && info.badge ? ` style="--mod-badge:${escapeAttr(info.badge)};--mod-fill:${escapeAttr(info.fill || info.badge)}"` : '';
+            return `<b class="hero-mod-chip" data-mod="${escapeAttr(m)}"${badge}>${escapeHtml(m)}</b>`;
+          })
+          .join('')
+      : '—';
+    const inicioLabel = dayMods.inicio ? 'Inicio ' + dayMods.inicio : 'Sin hora de inicio';
+    const modsFoot = (dayMods.list.length ? 'Módulos del día' : 'Sin módulos') +
+      (dayMods.inicio ? ' · ' + inicioLabel : '');
+    const totalJarras = Number(k.totalCajas) || 0;
+    if (!KG_FACTORS.includes(kgFactor)) kgFactor = JARRA_A_KG;
+    const totalKg = totalJarras * kgFactor;
+    const avgJarras = k.promedioCajasPorTrabajador || (nListed ? totalJarras / nListed : 0);
     const topJarras = top ? top.c || 0 : 0;
     const leaderJarras = topG ? topG.c || 0 : 0;
     const gaugePct = report && k.totalCajas > 0 && nPeople > 0 ? 100 : report ? 72 : 0;
@@ -3167,7 +3502,8 @@
                 const info = fmtFechaClara(displayIso);
                 const active = o.value === state.fecha ? ' is-active' : '';
                 const filasMeta = o.filas ? fmt(o.filas) + ' registros' : '';
-                const title = info.fullLong + (filasMeta ? ' · ' + filasMeta : '');
+                const varLabel = variedadLabelForFecha(o.value);
+                const title = info.fullLong + (varLabel ? ' · ' + varLabel : '') + (filasMeta ? ' · ' + filasMeta : '');
                 return `<button
                   type="button"
                   class="fecha-dd-opt${active}"
@@ -3179,6 +3515,7 @@
                   <span class="fecha-dd-opt-main">
                     <span class="fecha-dd-opt-week">${escapeHtml(info.weekdayLong || info.weekday)}</span>
                     <span class="fecha-dd-opt-line">${escapeHtml(info.line || info.short)}</span>
+                    <span class="fecha-dd-opt-var">${escapeHtml(varLabel)}</span>
                   </span>
                   ${filasMeta ? `<span class="fecha-dd-opt-meta">${escapeHtml(filasMeta)}</span>` : ''}
                   <span class="fecha-dd-opt-check" aria-hidden="true"></span>
@@ -3222,8 +3559,11 @@
               <div class="metric-panel metric-panel-main hero-banner-mobile-only">
                 <span class="metric-label">Total del día</span>
                 <div class="metric-row">
-                  <p class="value">${fmt(k.totalCajas)}</p>
+                  <p class="value">${fmt(totalJarras)}</p>
                   <span class="unit">jarras</span>
+                  <span class="metric-kg-sep" aria-hidden="true">·</span>
+                  <p class="value value-kg">${fmt(totalKg)}</p>
+                  <span class="unit">kg</span>
                 </div>
                 <div class="metric-subrow">
                   <span class="metric-chip" title="Cosechadores registrados">${fmt(nPeople)} personas</span>
@@ -3259,18 +3599,34 @@
                 </div>
               </div>
               <p class="hero-side-kicker">Total cosechado · ${escapeHtml(fechaMain)}</p>
-              <div class="hero-side-total">
-                <strong>${fmt(k.totalCajas)}</strong>
-                <span>jarras</span>
+              <div class="hero-side-total" title="${fmt(totalJarras)} jarras · ${fmt(totalKg)} kg (× ${kgFactor})">
+                <div class="hero-side-total-item">
+                  <strong>${fmt(totalJarras)}</strong>
+                  <span>jarras</span>
+                </div>
+                <div class="hero-side-total-item">
+                  <p class="hero-kg-line">
+                    <strong id="heroKgValue">${fmt(totalKg)}</strong>
+                    <span>kg</span>
+                  </p>
+                  <div class="hero-kg-factors" role="group" aria-label="Factor jarra a kg">
+                    ${KG_FACTORS.map(
+                      (f) =>
+                        `<button type="button" class="hero-kg-factor${f === kgFactor ? ' is-on' : ''}" data-kg-factor="${f}" data-jarras="${totalJarras}" aria-pressed="${f === kgFactor ? 'true' : 'false'}" title="kg = jarras × ${f}">${String(f)}</button>`
+                    ).join('')}
+                  </div>
+                </div>
               </div>
               <div class="hero-side-stats">
-                <div class="hero-side-stat">
+                <div class="hero-side-stat" title="${escapeAttr(origenTitle || 'Cosechadores del día')}">
                   <strong>${fmt(nPeople)}</strong>
                   <span>Cosechadores</span>
+                  ${origenNombre ? `<span class="hero-side-huertos">${escapeHtml(origenNombre)}</span>` : ''}
+                  ${origenHuertos ? `<span class="hero-side-huertos-sub">${escapeHtml(origenHuertos)}</span>` : ''}
                 </div>
-                <div class="hero-side-stat">
-                  <strong>${fmt(nGrupos)}</strong>
-                  <span>Grupos LIC</span>
+                <div class="hero-side-stat hero-side-stat--mods" title="${escapeAttr(modsLabel)}${dayMods.inicio ? ' · ' + inicioLabel : ''}">
+                  <strong class="hero-mod-list">${modsChips}</strong>
+                  <span>${escapeHtml(modsFoot)}</span>
                 </div>
               </div>
               <div class="hero-side-note">
@@ -3288,7 +3644,7 @@
               <strong>${fmt(nPeople)}</strong>
               ${statSparkSvg('people')}
             </div>
-            <span class="stat-foot">Personal activo</span>
+            <span class="stat-foot">${escapeHtml(origenNombre ? origenNombre + (origenHuertos ? ' · ' + origenHuertos : '') : 'Personal activo')}</span>
           </button>
           <button type="button" class="report-stat tone-groups is-tappable" data-stat-tip="groups" aria-label="Grupos LIC · ver detalle">
             <span class="stat-label">Grupos LIC</span>
@@ -3401,7 +3757,15 @@
         return full.indexOf(q) >= 0 || short.indexOf(q) >= 0 || jefe.indexOf(q) >= 0;
       });
     }
-    const maxC = Math.max(...grupos.map((g) => g.c || 0), 1);
+    grupos.sort((a, b) => {
+      const ra = (Number(a.n) || 0) > 0 ? (Number(a.c) || 0) / Number(a.n) : 0;
+      const rb = (Number(b.n) || 0) > 0 ? (Number(b.c) || 0) / Number(b.n) : 0;
+      return rb - ra || (Number(b.c) || 0) - (Number(a.c) || 0);
+    });
+    const maxR = Math.max(
+      ...grupos.map((g) => ((Number(g.n) || 0) > 0 ? (Number(g.c) || 0) / Number(g.n) : 0)),
+      1
+    );
     if (meta) {
       meta.textContent = state.grupoQ
         ? `${grupos.length} coincidencia${grupos.length === 1 ? '' : 's'}`
@@ -3415,26 +3779,35 @@
     }
     el.innerHTML = grupos
       .map((g, i) => {
-        const pct = Math.max(4, Math.round(((g.c || 0) / maxC) * 100));
         const peopleN = Number(g.n) || 0;
         const jefe = QB.supervisors ? QB.supervisors.label(g.grupo, fecha) : '';
         const jefeFull = QB.supervisors ? QB.supervisors.fullLabel(g.grupo, fecha) : '';
-        const ratio =
-          peopleN > 0 ? Number(g.c || 0) / peopleN : 0;
+        const ratio = peopleN > 0 ? Number(g.c || 0) / peopleN : 0;
         const ratioTxt = peopleN > 0 ? fmt(ratio) : '—';
-        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="#${i + 1} · ${escapeAttr(shortGrupo(g.grupo))} · ${fmt(g.c)} jarras · ${peopleN} personas · RATIO ${ratioTxt}${jefeFull ? ` · Supervisor: ${escapeAttr(jefeFull)}` : ''} · toca para ver el equipo">
-          <span class="grupo-map-rank" title="Puesto #${i + 1} en jarras">${i + 1}</span>
+        const pct = Math.max(4, Math.round((ratio / maxR) * 100));
+        const ratioFormula =
+          peopleN > 0
+            ? `${fmt(g.c)} jarras ÷ ${peopleN} cosech. = ratio ${ratioTxt}`
+            : `${fmt(g.c)} jarras`;
+        return `<button type="button" class="grupo-map-row" role="listitem" data-grupo="${escapeAttr(g.grupo)}" title="#${i + 1} · ${escapeAttr(shortGrupo(g.grupo))} · ${ratioFormula}${jefeFull ? ` · Supervisor: ${escapeAttr(jefeFull)}` : ''} · toca para ver el equipo">
+          <span class="grupo-map-rank" title="Puesto #${i + 1} por ratio">${i + 1}</span>
           <span class="grupo-map-body">
             <span class="grupo-map-top">
               <strong title="${escapeAttr(g.grupo)}">${escapeHtml(shortGrupo(g.grupo))}</strong>
-              <em title="${fmt(g.c)} jarras en este grupo">${fmt(g.c)} jarras<span class="grupo-ratio" title="${fmt(g.c)} jarras ÷ ${peopleN} pers."> · RATIO: ${ratioTxt}</span></em>
+              <em title="${escapeAttr(ratioFormula)}">${
+                peopleN > 0
+                  ? `${fmt(g.c)} jarras - <span class="grupo-ratio">Ratio: ${ratioTxt}</span>`
+                  : `${fmt(g.c)} jarras`
+              }</em>
             </span>
             <span class="grupo-map-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
             <span class="grupo-map-sub">${
-              jefe
+              jefeFull
+                ? `<span class="grupo-jefe">Jefe: ${escapeHtml(jefeFull)}</span> · `
+                : jefe
                 ? `<span class="grupo-jefe">Jefe: ${escapeHtml(jefe)}</span> · `
                 : ''
-            }${peopleN} pers. · ${escapeHtml(g.grupo)}</span>
+            }${peopleN} pers. · <span class="grupo-ratio" title="${escapeAttr(ratioFormula)}">ratio ${ratioTxt}</span> · ${escapeHtml(g.grupo)}</span>
           </span>
           <span class="vista-go" aria-hidden="true">${QB.icons.chevronRight(16)}</span>
         </button>`;
@@ -3483,12 +3856,16 @@
         let gte30 = 0;
         people.forEach((r) => {
           const c = Number(r.c || 0);
-          if (c < 30) lt30 += 1;
-          else if (c > 0) gte30 += 1;
+          if (c > 0 && c <= 30) lt30 += 1;
+          else if (c >= 31) gte30 += 1;
         });
         const cosechadores = Number(g.n) || people.length || 0;
         const jarras = Number(g.c) || 0;
         const ratio = cosechadores > 0 ? Math.round((jarras / cosechadores) * 100) / 100 : 0;
+        const formula =
+          cosechadores > 0
+            ? `${fmt(jarras)} jarras - Ratio: ${fmt(ratio)}`
+            : '';
         const jefe =
           (QB.supervisors &&
             (QB.supervisors.fullLabel(g.grupo, fecha) || QB.supervisors.label(g.grupo, fecha))) ||
@@ -3498,6 +3875,7 @@
           grupoFull: g.grupo,
           supervisor: jefe,
           ratio,
+          formula,
           jarras,
           cosechadores,
           lt30,
@@ -3925,7 +4303,10 @@
     let people = allTeam;
 
     if (jarFilter === 'lt40') {
-      people = people.filter((r) => Number(r.c || 0) < COMPARE_LT40);
+      people = people.filter((r) => {
+        const c = Number(r.c || 0);
+        return c > 0 && c <= COMPARE_LT40;
+      });
     } else if (jarFilter === 'gte40') {
       people = people.filter((r) => Number(r.c || 0) >= COMPARE_GTE58);
     }
@@ -3941,7 +4322,10 @@
       });
     }
 
-    const nLt40 = allTeam.filter((r) => Number(r.c || 0) < COMPARE_LT40).length;
+    const nLt40 = allTeam.filter((r) => {
+      const c = Number(r.c || 0);
+      return c > 0 && c <= COMPARE_LT40;
+    }).length;
     const nGte40 = allTeam.filter((r) => Number(r.c || 0) >= COMPARE_GTE58).length;
     const totalJarras = allTeam.reduce((s, r) => s + (r.c || 0), 0);
     const jefeFull = supervisorFullLabel(grupoKey);
@@ -3964,7 +4348,7 @@
         }${fmt(allTeam.length)} personas · ${fmt(totalJarras)} jarras</p>
       </header>
       <div class="jar-filters" role="group" aria-label="Filtrar por jarras">
-        ${filterChip('lt40', 'Menos de ' + COMPARE_LT40, nLt40)}
+        ${filterChip('lt40', '≤ ' + COMPARE_LT40, nLt40)}
         ${filterChip('gte40', COMPARE_GTE58 + ' o más', nGte40)}
         ${filterChip('all', 'Todos', allTeam.length)}
       </div>
@@ -4250,6 +4634,14 @@
     charts.onWorkerClick = function (row) {
       openWorkerModal(row);
     };
+    const varLabel = dayOrigen(report).map((v) => v.label).join(' · ');
+    const board = $('chartLiderazgo');
+    if (board) board.setAttribute('data-variedad', varLabel);
+    const rankMeta = $('supRankMeta');
+    if (rankMeta) {
+      rankMeta.textContent =
+        (varLabel ? varLabel + ' · ' : '') + 'Puestos por ratio · 1.º el más alto · jarras · kg';
+    }
     charts.renderDayPack(report, merged);
     renderRatioSheetBar();
     renderRatioChart();
@@ -4407,12 +4799,16 @@
     return s.length > 14 ? s.slice(0, 13) + '…' : s;
   }
 
-  /** L220-T9-M5 → M5 · o deja M5 si ya viene corto */
+  /** L220-T9-M5 → M5 · lote del plano oficial manda sobre el sufijo */
   function shortModulo(v) {
+    if (QB.plano && typeof QB.plano.modOfLote === 'function') {
+      const fromPlano = QB.plano.modOfLote(v);
+      if (fromPlano) return fromPlano;
+    }
     const s = String(v || '').trim();
     if (!s) return '';
     const m = s.match(/M\s*0*(\d+)/i);
-    if (m) return 'M' + m[1];
+    if (m) return 'M' + Number(m[1]);
     return '';
   }
 
@@ -4532,8 +4928,89 @@
     }
   }
 
+  function isHistorialModalOpen() {
+    const root = $('modalRoot');
+    if (!root || root.hidden) return false;
+    const modal = root.querySelector('.modal');
+    return !!(
+      modal &&
+      (modal.classList.contains('is-auth-modal') || modal.classList.contains('is-historial-modal'))
+    );
+  }
+
+  function historialFechasNuevas() {
+    const have = Object.create(null);
+    ((QB.historial && QB.historial.dias) || []).forEach((f) => {
+      have[String(f)] = 1;
+    });
+    const out = [];
+    (state.fechaOpts || []).forEach((o) => {
+      const iso = fechaIsoKey((o && (o.display || o.value)) || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || have[iso]) return;
+      if (out.indexOf(iso) < 0) out.push(iso);
+    });
+    return out.sort();
+  }
+
+  function historialFechaAlertHtml() {
+    const nuevas = historialFechasNuevas();
+    if (!nuevas.length) return '';
+    const ico = QB.icons && QB.icons.bell ? QB.icons.bell(18) : '';
+    const labels = nuevas.map((f) => fmtFecha(f)).join(' · ');
+    const titulo = nuevas.length === 1 ? 'Ingresó fecha' : 'Ingresaron fechas';
+    return (
+      '<div class="historial-swal" id="historialFechaAlert" role="status">' +
+      '<span class="historial-swal-ico" aria-hidden="true">' +
+      ico +
+      '</span>' +
+      '<div><strong>' +
+      titulo +
+      '</strong><p>' +
+      escapeHtml(labels) +
+      ' · aún no está en el historial fijo. Pasa el Excel de esa semana.</p></div></div>'
+    );
+  }
+
+  function refreshHistorialFechaAlert() {
+    const host = $('authGateForm') || $('historialFiltro') || $('historialSearchForm');
+    if (!host) return;
+    let box = $('historialFechaAlert');
+    const html = historialFechaAlertHtml();
+    if (!html) {
+      if (box) box.remove();
+      return;
+    }
+    if (box) {
+      box.outerHTML = html;
+      return;
+    }
+    host.insertAdjacentHTML('afterend', html);
+  }
+
+  function notifyHistorialFechasNuevas() {
+    const nuevas = historialFechasNuevas();
+    if (!nuevas.length) return;
+    let seen = [];
+    try {
+      seen = JSON.parse(localStorage.getItem('qb-hist-seen-fechas') || '[]');
+    } catch (_) {
+      seen = [];
+    }
+    if (!Array.isArray(seen)) seen = [];
+    const fresh = nuevas.filter((f) => seen.indexOf(f) < 0);
+    if (!fresh.length) return;
+    const labels = fresh.map((f) => fmtFecha(f)).join(' · ');
+    if (QB.export && QB.export.toast) {
+      QB.export.toast((fresh.length === 1 ? 'Ingresó fecha · ' : 'Ingresaron fechas · ') + labels, 'warn');
+    }
+    try {
+      localStorage.setItem('qb-hist-seen-fechas', JSON.stringify(seen.concat(fresh)));
+    } catch (_) {}
+  }
+
   function closeModal() {
     const root = $('modalRoot');
+    const wasHist = isHistorialModalOpen();
     if (root) {
       root.hidden = true;
       const modal = root.querySelector('.modal');
@@ -4542,12 +5019,517 @@
         modal.classList.remove('is-warn-modal');
         modal.classList.remove('is-stat-tip-modal');
         modal.classList.remove('is-refresh-modal');
+        modal.classList.remove('is-auth-modal');
+        modal.classList.remove('is-historial-modal');
       }
     }
     state.grupoModal = '';
     state.grupoWorkerQ = '';
     state.grupoJarFilter = 'all';
     QB.charts.dispose('chartModal');
+    if (wasHist && QB.charts && QB.charts.dispose) QB.charts.dispose('chartHistorial');
+  }
+
+  async function sha256Hex(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text || '')));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  function showAuthModalShell(kind) {
+    const root = $('modalRoot');
+    const modal = root && root.querySelector('.modal');
+    if (modal) {
+      modal.classList.add('is-sheet');
+      modal.classList.toggle('is-auth-modal', kind === 'gate');
+      modal.classList.toggle('is-historial-modal', kind === 'search');
+    }
+    if (root) root.hidden = false;
+  }
+
+  function enterHistorialTab() {
+    closeModal();
+    setTab('historial');
+    const panel = $('panelHistorial');
+    if (panel && panel.scrollIntoView) {
+      requestAnimationFrame(() => panel.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    }
+  }
+
+  function openAuthHistorialModal() {
+    if (state.historialOk) {
+      enterHistorialTab();
+      return;
+    }
+    const lockIco = QB.icons && QB.icons.lock ? QB.icons.lock(22) : '';
+    $('modalBody').innerHTML = `
+      <header class="sheet-head auth-gate-head">
+        <span class="auth-gate-lock" aria-hidden="true">${lockIco}</span>
+        <p class="sheet-eyebrow">Acceso restringido</p>
+        <h3 id="modalTitle">Historial autorizado</h3>
+        <p class="sheet-sub">Ingrese la contraseña para ver el historial autorizado.</p>
+      </header>
+      <form id="authGateForm" class="auth-gate-form" autocomplete="off">
+        <label class="auth-gate-label" for="authGatePass">Contraseña</label>
+        <input
+          id="authGatePass"
+          class="auth-gate-input"
+          type="password"
+          name="auth-pass"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          required
+        />
+        <p class="auth-gate-err" id="authGateErr" hidden>Contraseña incorrecta.</p>
+        <button type="submit" class="btn btn-primary auth-gate-submit">Entrar</button>
+      </form>
+      ${historialFechaAlertHtml()}
+    `;
+    showAuthModalShell('gate');
+    const form = $('authGateForm');
+    const input = $('authGatePass');
+    const err = $('authGateErr');
+    const modal = $('modalRoot') && $('modalRoot').querySelector('.modal');
+    if (input) setTimeout(() => input.focus(), 40);
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('.auth-gate-submit');
+      if (btn) btn.disabled = true;
+      if (err) err.hidden = true;
+      try {
+        const hex = await sha256Hex(input ? input.value : '');
+        if (input) input.value = '';
+        if (hex !== AUTH_GATE_HASH) {
+          if (err) err.hidden = false;
+          if (modal) {
+            modal.classList.remove('is-auth-shake');
+            void modal.offsetWidth;
+            modal.classList.add('is-auth-shake');
+          }
+          if (input) input.focus();
+          return;
+        }
+        state.historialOk = true;
+        enterHistorialTab();
+      } catch (_) {
+        if (err) {
+          err.textContent = 'No se pudo validar el acceso.';
+          err.hidden = false;
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  function historialSemanaMeta() {
+    const H = QB.historial;
+    if (!H) return 'Sin módulo de historial';
+    const cargada = H.ultimaSemanaCargada || 0;
+    const actual = H.semanaActual || 39;
+    if (!cargada) return 'Semana actual ' + actual + ' · aún no hay Excel cargado';
+    const falta = actual > cargada ? ' · faltan semanas ' + (cargada + 1) + ' a ' + actual : '';
+    return 'Semanas cargadas hasta la ' + cargada + ' · estamos en la ' + actual + falta;
+  }
+
+  function renderHistorialPage() {
+    const page = $('historialPage');
+    const meta = $('historialPageMeta');
+    if (meta) meta.textContent = historialSemanaMeta();
+    if (!page) return;
+    if (!state.historialOk) {
+      setTab('resumen');
+      openAuthHistorialModal();
+      return;
+    }
+    if (page.querySelector('#historialExcel') && page.querySelector('#historialList')) {
+      refreshHistorialFechaAlert();
+      return;
+    }
+    page.innerHTML =
+      historialFechaAlertHtml() +
+      '<div class="historial-licapas" id="historialLicapas" role="group" aria-label="Elegir Licapa">' +
+      '<button type="button" class="historial-licapa is-on" data-bloque="i">' +
+      '<strong>Licapa I</strong><span>Sekoya Pop · incluye Licapa III</span></button>' +
+      '<button type="button" class="historial-licapa" data-bloque="ii">' +
+      '<strong>Licapa II</strong><span>Magica · incluye Licapa III</span></button>' +
+      '</div>' +
+      '<p class="historial-filtro-hint">Licapa I también muestra Licapa III cuando es Sekoya Pop. Licapa II también muestra Licapa III cuando es Magica. Son Excels distintos: déjalos en historial-in\\Licapa I o historial-in\\Licapa II.</p>' +
+      '<div class="historial-excel" id="historialExcel">' +
+      '<label class="auth-gate-label" for="historialExcelFile">Excel de DNI</label>' +
+      '<div class="historial-excel-drop" id="historialExcelDrop" role="button" tabindex="0">' +
+      '<input id="historialExcelFile" type="file" accept=".xlsx,.xls,.csv,.txt" hidden />' +
+      '<strong>Sube el Excel</strong>' +
+      '<span>Columna DNI como en tu planilla. Te saco todos los días, el promedio y si está apto para seguir.</span>' +
+      '<em>Elegir archivo</em>' +
+      '</div>' +
+      '<p class="historial-filtro-hint" id="historialExcelName"></p>' +
+      '</div>' +
+      '<div id="historialLote" class="historial-lote" hidden></div>' +
+      '<label class="auth-gate-label" for="historialFiltro">O filtra a mano · varios DNI con coma</label>' +
+      '<input id="historialFiltro" class="auth-gate-input historial-filtro" type="search" placeholder="42500653, 76325611, 78148623" autocomplete="off" />' +
+      '<p class="historial-filtro-hint">También puedes pegar un nombre.</p>' +
+      '<div class="historial-directorio">' +
+      '<div class="historial-directorio-bar">' +
+      '<span>Directorio</span>' +
+      '<span class="historial-filtro-count" id="historialFiltroCount"></span>' +
+      '</div>' +
+      '<div class="historial-list-wrap">' +
+      '<div class="historial-directorio-cols"><span>Nombre</span><span>DNI</span></div>' +
+      '<div id="historialList" class="historial-list"></div>' +
+      '</div></div>' +
+      '<div id="historialResult" class="historial-result"></div>';
+    if (QB.historial) QB.historial.bloqueActivo = state.historialBloque || 'i';
+    paintHistorialList('');
+    bindHistorialLicapas();
+    bindHistorialExcel();
+    const filtro = $('historialFiltro');
+    if (filtro) {
+      filtro.addEventListener('input', () => paintHistorialList(filtro.value));
+    }
+  }
+
+  function bindHistorialLicapas() {
+    const host = $('historialLicapas');
+    if (!host) return;
+    const paint = (bloque) => {
+      state.historialBloque = bloque === 'ii' ? 'ii' : 'i';
+      if (QB.historial) QB.historial.bloqueActivo = state.historialBloque;
+      host.querySelectorAll('[data-bloque]').forEach((btn) => {
+        btn.classList.toggle('is-on', btn.getAttribute('data-bloque') === state.historialBloque);
+      });
+      const filtro = $('historialFiltro');
+      const q = filtro ? filtro.value : '';
+      paintHistorialList(q);
+      const visible =
+        QB.historial &&
+        state.historialDni &&
+        QB.historial.list(q).some((p) => p.dni === state.historialDni);
+      if (!visible) state.historialDni = '';
+      renderHistorialResult(state.historialDni);
+    };
+    host.querySelectorAll('[data-bloque]').forEach((btn) => {
+      btn.addEventListener('click', () => paint(btn.getAttribute('data-bloque') || 'i'));
+    });
+    paint(state.historialBloque || 'i');
+  }
+
+  function bindHistorialExcel() {
+    const input = $('historialExcelFile');
+    const drop = $('historialExcelDrop');
+    if (!input || !drop) return;
+    const take = async (file) => {
+      if (!file || !QB.historial || !QB.historial.readListaDni) return;
+      try {
+        drop.classList.add('is-busy');
+        const dnis = await QB.historial.readListaDni(file);
+        const name = $('historialExcelName');
+        if (name) name.textContent = file.name + ' · ' + dnis.length + ' DNI';
+        if (!dnis.length) {
+          if (QB.export && QB.export.toast) QB.export.toast('No leí DNI en ese archivo', 'warn');
+          paintHistorialLote([]);
+          return;
+        }
+        const rows = QB.historial.evaluarLista(dnis);
+        state.historialLote = rows;
+        paintHistorialLote(rows);
+        if (QB.export && QB.export.toast) {
+          QB.export.toast('Lista leída · ' + rows.length + ' personas', 'ok');
+        }
+      } catch (err) {
+        if (QB.export && QB.export.toast) {
+          QB.export.toast(err && err.message ? err.message : 'No se pudo leer el Excel', 'warn');
+        }
+      } finally {
+        drop.classList.remove('is-busy');
+        input.value = '';
+      }
+    };
+    input.addEventListener('change', () => {
+      if (input.files && input.files[0]) take(input.files[0]);
+    });
+    drop.addEventListener('click', (e) => {
+      if (e.target === input) return;
+      input.click();
+    });
+    drop.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      drop.classList.add('is-over');
+    });
+    drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      drop.classList.remove('is-over');
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) take(file);
+    });
+  }
+
+  function historialFmtNum(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return '—';
+    return x.toLocaleString('es-PE', { maximumFractionDigits: 1 });
+  }
+
+  function paintHistorialLote(rows) {
+    const box = $('historialLote');
+    const list = $('historialList');
+    if (!box) return;
+    if (!rows || !rows.length) {
+      box.hidden = true;
+      box.innerHTML = '';
+      if (list) list.hidden = false;
+      return;
+    }
+    if (list) list.hidden = true;
+    const nApto = rows.filter((r) => r.decision === 'APTO').length;
+    const nNo = rows.filter((r) => r.decision === 'NO APTO').length;
+    const nSin = rows.filter((r) => r.decision === 'SIN DATA').length;
+    const dias = ((QB.historial && QB.historial.dias) || []).slice().reverse();
+    const dayHeads = dias.map((f) => '<th>' + escapeHtml(QB.historial.fmtFecha(f)) + '</th>').join('');
+    box.hidden = false;
+    box.innerHTML =
+      '<div class="historial-lote-sum">' +
+      '<span><b>' +
+      rows.length +
+      '</b> en la lista</span>' +
+      '<span class="is-apto"><b>' +
+      nApto +
+      '</b> aptos</span>' +
+      '<span class="is-no"><b>' +
+      nNo +
+      '</b> no aptos</span>' +
+      '<span class="is-sin"><b>' +
+      nSin +
+      '</b> sin data</span>' +
+      '</div>' +
+      '<p class="historial-filtro-hint">NO APTO = viene bajando desde el 7/09. Las faltas no entran en la tendencia.</p>' +
+      '<div class="historial-lote-actions">' +
+      '<button type="button" class="btn btn-primary" id="historialLoteXls">Descargar resultado</button>' +
+      '</div>' +
+      '<div class="historial-lote-wrap"><table class="historial-lote-table"><thead><tr>' +
+      '<th>Decisión</th><th>Nombre</th><th>DNI</th><th>Bajada</th><th>Días</th><th>Faltas</th>' +
+      dayHeads +
+      '<th>Supervisor</th></tr></thead><tbody>' +
+      rows
+        .map((r) => {
+          const cls =
+            r.decision === 'APTO' ? 'is-apto' : r.decision === 'NO APTO' ? 'is-no' : 'is-sin';
+          const days = dias
+            .map((f) => {
+              const d = (r.serie || []).find((x) => x.fecha === f);
+              if (d && d.estado === 'ok') return '<td>' + (d.jarras || 0) + '</td>';
+              if (d && d.estado === 'falta') return '<td class="is-falta">F</td>';
+              return '<td>—</td>';
+            })
+            .join('');
+          return (
+            '<tr class="' +
+            cls +
+            '" data-hist-dni="' +
+            escapeHtml(r.dni) +
+            '"><td><strong>' +
+            escapeHtml(r.decision) +
+            '</strong></td><td>' +
+            escapeHtml(r.nombre || '—') +
+            '</td><td>' +
+            escapeHtml(r.dni) +
+            '</td><td><b>' +
+            escapeHtml(r.bajada || '—') +
+            '</b></td><td>' +
+            r.diasOk +
+            '</td><td>' +
+            r.diasFalto +
+            '</td>' +
+            days +
+            '<td>' +
+            escapeHtml(r.jefe || '—') +
+            '</td></tr>'
+          );
+        })
+        .join('') +
+      '</tbody></table></div>';
+    const xls = $('historialLoteXls');
+    if (xls) xls.addEventListener('click', () => exportHistorialLote(rows));
+    box.querySelectorAll('[data-hist-dni]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        state.historialDni = tr.getAttribute('data-hist-dni') || '';
+        renderHistorialResult(state.historialDni);
+        const res = $('historialResult');
+        if (res && res.scrollIntoView) res.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+    });
+  }
+
+  function exportHistorialLote(rows) {
+    if (!QB.export || !QB.export._xlsxFromRows || !rows || !rows.length) {
+      if (QB.export && QB.export.toast) QB.export.toast('Nada para descargar', 'warn');
+      return;
+    }
+    const dias = ((QB.historial && QB.historial.dias) || []).slice().reverse();
+    const header = ['Decision', 'Nombre', 'DNI', 'Bajada', 'Dias trabajo', 'Faltas']
+      .concat(dias.map((f) => QB.historial.fmtFecha(f)))
+      .concat(['Supervisor']);
+    const body = rows.map((r) => {
+      const dayVals = dias.map((f) => {
+        const d = (r.serie || []).find((x) => x.fecha === f);
+        if (!d) return '';
+        if (d.estado === 'ok') return Number(d.jarras) || 0;
+        if (d.estado === 'falta') return 'F';
+        return '';
+      });
+      return [r.decision, r.nombre || '', r.dni, r.bajada || '', r.diasOk, r.diasFalto]
+        .concat(dayVals)
+        .concat([r.jefe || '']);
+    });
+    const bytes = QB.export._xlsxFromRows([header].concat(body), 'Apto historial');
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    QB.export._downloadBlob(blob, 'QBerries_apto_historial.xlsx');
+    if (QB.export.toast) QB.export.toast('Excel listo · apto / no apto', 'ok');
+  }
+
+  function paintHistorialList(q) {
+    const box = $('historialList');
+    if (!box || !QB.historial) return;
+    const rows = QB.historial.list ? QB.historial.list(q) : [];
+    if (q) box.hidden = false;
+    const count = $('historialFiltroCount');
+    if (count) {
+      const n = rows.length.toLocaleString('es-PE');
+      count.textContent = q
+        ? n + (rows.length === 1 ? ' coincidencia' : ' coincidencias')
+        : n + ' personas';
+    }
+    if (!rows.length) {
+      const bloque = state.historialBloque === 'ii' ? 'Licapa II · Magica' : 'Licapa I · Sekoya Pop';
+      box.innerHTML = q
+        ? '<p class="historial-empty">Nadie coincide en ' + escapeHtml(bloque) + '. Separa los DNI con coma: 42500653, 76325611</p>'
+        : '<p class="historial-empty">Sin personas en ' +
+          escapeHtml(bloque) +
+          '. Deja el Excel en historial-in\\' +
+          (state.historialBloque === 'ii' ? 'Licapa II' : 'Licapa I') +
+          '.</p>';
+      return;
+    }
+    const selected = state.historialDni || '';
+    box.innerHTML = rows
+      .map((p) => {
+        const on = p.dni === selected ? ' is-on' : '';
+        return (
+          '<button type="button" class="historial-row' +
+          on +
+          '" data-hist-dni="' +
+          escapeHtml(p.dni) +
+          '"><span class="historial-row-name">' +
+          escapeHtml(p.nombre || 'Sin nombre') +
+          '</span><span class="historial-row-dni">' +
+          escapeHtml(p.dni) +
+          '</span></button>'
+        );
+      })
+      .join('');
+    box.querySelectorAll('[data-hist-dni]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.historialDni = btn.getAttribute('data-hist-dni') || '';
+        box.querySelectorAll('.historial-row').forEach((el) => {
+          el.classList.toggle('is-on', el === btn);
+        });
+        renderHistorialResult(state.historialDni);
+      });
+    });
+  }
+
+  function renderHistorialResult(q) {
+    const box = $('historialResult');
+    if (!box || !QB.historial) return;
+    const dni = QB.historial.normDni(q);
+    if (!dni) {
+      box.innerHTML = '';
+      if (QB.charts) QB.charts.dispose('chartHistorial');
+      return;
+    }
+    const person = QB.historial.find(dni);
+    if (!person) {
+      box.innerHTML =
+        '<p class="historial-empty">Sin historial para <strong>' +
+        escapeHtml(dni) +
+        '</strong>. ' +
+        escapeHtml(historialSemanaMeta()) +
+        '.</p>';
+      if (QB.charts) QB.charts.dispose('chartHistorial');
+      return;
+    }
+    const st = QB.historial.stats(person);
+    const jefes = (st.supervisores || [])
+      .map((j) => {
+        return (
+          '<li><strong>' +
+          escapeHtml(j.nombre) +
+          '</strong>' +
+          (j.lic ? ' · ' + escapeHtml(j.lic) : '') +
+          '</li>'
+        );
+      })
+      .join('');
+    box.innerHTML =
+      '<div class="historial-person">' +
+      '<p class="historial-name">' +
+      escapeHtml(st.nombre || 'Sin nombre') +
+      '</p>' +
+      '<p class="historial-dni">DNI ' +
+      escapeHtml(st.dni) +
+      '</p>' +
+      '<div class="historial-kpis">' +
+      '<span><b>' +
+      escapeHtml(st.bajada || '—') +
+      '</b> tendencia</span>' +
+      '<span><b>' +
+      st.diasTrabajados +
+      '</b> días trabajó</span>' +
+      '<span><b>' +
+      st.diasFalto +
+      '</b> días faltó</span>' +
+      '<span><b>' +
+      (st.supervisores.length || 0) +
+      '</b> supervisores</span>' +
+      '</div>' +
+      (jefes
+        ? '<div class="historial-jefes"><p>Supervisores que lo han tenido</p><ul>' + jefes + '</ul></div>'
+        : '<p class="muted">Sin supervisor registrado en las semanas cargadas.</p>') +
+      '<div class="chart-wrap historial-chart" id="chartHistorial"></div>' +
+      '<div class="historial-dias"><table><thead><tr><th>Fecha</th><th>Estado</th><th>Jarras</th><th>Jefe</th></tr></thead><tbody>' +
+      (st.serie || [])
+        .slice()
+        .reverse()
+        .map((d) => {
+          const est =
+            d.estado === 'ok' ? 'Asistió' : d.estado === 'falta' ? 'Faltó' : d.estado === 'permiso' ? 'Permiso' : '—';
+          return (
+            '<tr class="is-' +
+            escapeHtml(d.estado) +
+            '"><td>' +
+            escapeHtml(d.label) +
+            '</td><td>' +
+            est +
+            '</td><td>' +
+            (d.jarras || (d.estado === 'ok' ? 0 : '—')) +
+            '</td><td>' +
+            escapeHtml(d.supervisor || '—') +
+            (d.lic ? ' · ' + escapeHtml(d.lic) : '') +
+            '</td></tr>'
+          );
+        })
+        .join('') +
+      '</tbody></table></div>' +
+      '</div>';
+    requestAnimationFrame(() => {
+      if (QB.charts && QB.charts.renderHistorialBarras) QB.charts.renderHistorialBarras(st.serie);
+    });
   }
 
   function openRefreshModal() {
@@ -4698,8 +5680,7 @@
         chartDistGt70: 'Más de 70 jarras',
         chartTopLotes: 'Lotes con más jarras',
         chartTopLic: 'LIC con más producción',
-        chartLiderazgo: 'Supervisor · más liderazgo',
-        chartPeoresLic: 'Peores LIC en producción'
+        chartLiderazgo: 'Todos los supervisores'
       }
     });
   }

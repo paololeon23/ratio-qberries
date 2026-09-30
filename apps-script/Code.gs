@@ -1,14 +1,14 @@
 /**
  * Q Berries · Rendimientos Licapa — API rápida
  *
- * GET ?action=todo              → día más reciente (+ índice de hojas/fechas)
+ * GET ?action=todo              → última pestaña de cosecha (Hoja 15, 16…) + índice
  * GET ?action=todo&fecha=KEY    → un día/hoja concreto (KEY = ISO o __hoja__N)
  * GET ?action=meta              → solo índice de hojas (ultra rápido, sin data)
  * GET ?action=ping              → health
  *
  * Lee TODAS las hojas con datos (Hoja 1, Hoja 2, Hoja 3…).
  * Identidad: CI (fallback DNI). Jarras: C → FP → F=Caja.
- * Cache ~120s: índice + un día por KEY (no arma todos los días en cada GET).
+ * Cache ~120s: índice + un día por KEY. “hoy” = última hoja con datos (no la fecha).
  */
 
 var TZ = 'America/Lima';
@@ -58,7 +58,7 @@ function meta_(p) {
   var cache = CacheService.getScriptCache();
   var stamp = bookStamp_();
   try {
-    var hit = cache.get('todo_v3_meta_' + stamp);
+    var hit = cache.get('todo_v4_meta_' + stamp);
     if (hit) {
       var parsed = JSON.parse(hit);
       if (parsed && parsed.ok) {
@@ -86,14 +86,15 @@ function meta_(p) {
 
   var pack = buildMeta_(loaded);
   try {
-    cache.put('todo_v3_meta_' + stamp, JSON.stringify(pack), CACHE_TTL);
-    cache.put('todo_v3_stamp', stamp, CACHE_TTL);
+    cache.put('todo_v4_meta_' + stamp, JSON.stringify(pack), CACHE_TTL);
+    cache.put('todo_v4_stamp', stamp, CACHE_TTL);
     cache.put(
-      'todo_v3_agg_' + stamp,
+      'todo_v4_agg_' + stamp,
       JSON.stringify({
         fechaCounts: loaded.fechaCounts,
         sheetNames: loaded.sheetNames,
         sheetDisplayFechas: loaded.sheetDisplayFechas,
+        sheetOrder: loaded.sheetOrder,
         byWorkerAll: loaded.agg
       }),
       CACHE_TTL
@@ -115,7 +116,7 @@ function todo_(p) {
 
   if (fechaWant) {
     try {
-      var hitDay = cache.get('todo_v3_day_' + stamp + '_' + fechaWant);
+      var hitDay = cache.get('todo_v4_day_' + stamp + '_' + fechaWant);
       if (hitDay) {
         var parsedD = JSON.parse(hitDay);
         if (parsedD && parsedD.ok) {
@@ -127,11 +128,11 @@ function todo_(p) {
     } catch (e1) { /* rebuild */ }
   } else {
     try {
-      var metaHit = cache.get('todo_v3_meta_' + stamp);
+      var metaHit = cache.get('todo_v4_meta_' + stamp);
       if (metaHit) {
         var metaParsed = JSON.parse(metaHit);
         if (metaParsed && metaParsed.ok && metaParsed.hoy) {
-          var hitAuto = cache.get('todo_v3_day_' + stamp + '_' + metaParsed.hoy);
+          var hitAuto = cache.get('todo_v4_day_' + stamp + '_' + metaParsed.hoy);
           if (hitAuto) {
             var parsedA = JSON.parse(hitAuto);
             if (parsedA && parsedA.ok) {
@@ -169,7 +170,7 @@ function todo_(p) {
   var built = buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, fechaHoy, hojas, fechaAyer);
 
   try {
-    cache.put('todo_v3_meta_' + stamp, JSON.stringify(meta), CACHE_TTL);
+    cache.put('todo_v4_meta_' + stamp, JSON.stringify(meta), CACHE_TTL);
     for (var fi = 0; fi < fechasOrd.length; fi++) {
       var fBuild = fechasOrd[fi];
       var ayerBuild = '';
@@ -185,10 +186,10 @@ function todo_(p) {
           ? built
           : buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, fBuild, hojas, ayerBuild);
       try {
-        cache.put('todo_v3_day_' + stamp + '_' + fBuild, JSON.stringify(builtDay), CACHE_TTL);
+        cache.put('todo_v4_day_' + stamp + '_' + fBuild, JSON.stringify(builtDay), CACHE_TTL);
       } catch (e4) { /* día muy grande para cache */ }
     }
-    cache.put('todo_v3_stamp', stamp, CACHE_TTL);
+    cache.put('todo_v4_stamp', stamp, CACHE_TTL);
   } catch (e3) { /* ok */ }
 
   return built;
@@ -196,9 +197,9 @@ function todo_(p) {
 
 function loadAllSheetsCached_(cache, stamp) {
   try {
-    var oldStamp = cache.get('todo_v3_stamp');
+    var oldStamp = cache.get('todo_v4_stamp');
     if (oldStamp === stamp) {
-      var aggHit = cache.get('todo_v3_agg_' + stamp);
+      var aggHit = cache.get('todo_v4_agg_' + stamp);
       if (aggHit) {
         var agg = JSON.parse(aggHit);
         if (agg && agg.fechaCounts && agg.byWorkerAll) {
@@ -207,6 +208,7 @@ function loadAllSheetsCached_(cache, stamp) {
             fechaCounts: agg.fechaCounts,
             sheetNames: agg.sheetNames,
             sheetDisplayFechas: agg.sheetDisplayFechas,
+            sheetOrder: agg.sheetOrder || {},
             agg: agg.byWorkerAll
           };
         }
@@ -219,16 +221,17 @@ function loadAllSheetsCached_(cache, stamp) {
 
   try {
     cache.put(
-      'todo_v3_agg_' + stamp,
+      'todo_v4_agg_' + stamp,
       JSON.stringify({
         fechaCounts: loaded.fechaCounts,
         sheetNames: loaded.sheetNames,
         sheetDisplayFechas: loaded.sheetDisplayFechas,
+        sheetOrder: loaded.sheetOrder,
         byWorkerAll: loaded.agg
       }),
       CACHE_TTL
     );
-    cache.put('todo_v3_stamp', stamp, CACHE_TTL);
+    cache.put('todo_v4_stamp', stamp, CACHE_TTL);
   } catch (e1) { /* ok */ }
 
   return loaded;
@@ -236,10 +239,14 @@ function loadAllSheetsCached_(cache, stamp) {
 
 function buildMeta_(loaded) {
   var fechasOrd = Object.keys(loaded.fechaCounts);
+  /* Última pestaña primero (Hoja 16, Hoja 15…) · no por fecha de celda */
   fechasOrd.sort(function (a, b) {
-    var da = (loaded.sheetDisplayFechas && loaded.sheetDisplayFechas[a]) || a;
-    var db = (loaded.sheetDisplayFechas && loaded.sheetDisplayFechas[b]) || b;
-    if (da !== db) return db.localeCompare(da);
+    var ia = loaded.sheetOrder && loaded.sheetOrder[a] != null ? loaded.sheetOrder[a] : -1;
+    var ib = loaded.sheetOrder && loaded.sheetOrder[b] != null ? loaded.sheetOrder[b] : -1;
+    if (ia !== ib) return ib - ia;
+    var na = hojaNum_((loaded.sheetNames && loaded.sheetNames[a]) || a);
+    var nb = hojaNum_((loaded.sheetNames && loaded.sheetNames[b]) || b);
+    if (na !== nb) return nb - na;
     return String(b).localeCompare(String(a));
   });
 
@@ -269,7 +276,7 @@ function buildMeta_(loaded) {
 
 function mergeMetaInto_(dayPack, cache, stamp) {
   try {
-    var metaHit = cache.get('todo_v3_meta_' + stamp);
+    var metaHit = cache.get('todo_v4_meta_' + stamp);
     if (metaHit) {
       var meta = JSON.parse(metaHit);
       if (meta && meta.hojas) {
@@ -289,6 +296,7 @@ function loadAllSheets_() {
   var agg = {};
   var sheetNames = {};
   var sheetDisplayFechas = {};
+  var sheetOrder = {};
   var anyRows = false;
 
   for (var s = 0; s < sheets.length; s++) {
@@ -316,6 +324,7 @@ function loadAllSheets_() {
     var sheetKey = sheetFecha || ('__hoja__' + s);
     sheetNames[sheetKey] = sh.getName();
     sheetDisplayFechas[sheetKey] = displayFecha;
+    sheetOrder[sheetKey] = s;
 
     for (var r = 1; r < grid.length; r++) {
       var row = grid[r];
@@ -379,7 +388,8 @@ function loadAllSheets_() {
     fechaCounts: fechaCounts,
     agg: agg,
     sheetNames: sheetNames,
-    sheetDisplayFechas: sheetDisplayFechas
+    sheetDisplayFechas: sheetDisplayFechas,
+    sheetOrder: sheetOrder
   };
 }
 
@@ -499,11 +509,20 @@ function buildDayResult_(byWorkerAll, fechaCounts, fechasOrd, fechaHoy, hojas, f
     })
     .slice(0, 50);
 
+  var ultimaNom = '';
+  for (var hi = 0; hi < (hojas || []).length; hi++) {
+    if (hojas[hi].fecha === fechaHoy) {
+      ultimaNom = hojas[hi].nombre || '';
+      break;
+    }
+  }
+
   return {
     ok: true,
     api: 'produccion',
     action: 'todo',
     hoy: fechaHoy,
+    ultimaHoja: ultimaNom,
     ayer: fechaAyer || (fechasOrd[1] || ayer_()),
     hojas: hojas,
     filtros: { fechas: [fechaHoy], grupo: '', variedad: '', q: '', ci: '' },
@@ -725,6 +744,11 @@ function fechaIso_(v) {
     return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
   }
   return '';
+}
+
+function hojaNum_(name) {
+  var m = String(name || '').match(/hoja\s*(\d+)/i);
+  return m ? Number(m[1]) : -1;
 }
 
 function parseSheetFecha_(name) {

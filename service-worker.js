@@ -1,20 +1,25 @@
 /* Service worker — app usable sin internet (shell; datos siempre frescos en red) */
-const CACHE = 'qb-rendimientos-m355';
+const CACHE = 'qb-rendimientos-m455';
 const PRECACHE = [
   './',
   './index.html',
-  './css/app.css?v=m355',
-  './js/config.js?v=m355',
-  './js/workers.js?v=m355',
-  './js/api.js?v=m355',
-  './js/icons.js?v=m355',
-  './js/avatars.js?v=m355',
-  './js/supervisors.js?v=m355',
-  './js/descartes.js?v=m355',
-  './js/charts.js?v=m355',
-  './js/select.js?v=m355',
-  './js/export.js?v=m355',
-  './js/app.js?v=m355',
+  './css/app.css?v=m455',
+  './js/config.js?v=m455',
+  './js/workers.js?v=m455',
+  './js/plano.js?v=m455',
+  './js/api.js?v=m455',
+  './js/icons.js?v=m455',
+  './js/avatars.js?v=m455',
+  './js/jefes-dia.js?v=m455',
+  './js/supervisors.js?v=m455',
+  './js/historial-data.js?v=m455',
+  './js/historial-nombres.js?v=m455',
+  './js/historial.js?v=m455',
+  './js/descartes.js?v=m455',
+  './js/charts.js?v=m455',
+  './js/select.js?v=m455',
+  './js/export.js?v=m455',
+  './js/app.js?v=m455',
   './vendor/echarts.min.js',
   './vendor/jspdf.umd.min.js',
   './manifest.webmanifest',
@@ -22,8 +27,8 @@ const PRECACHE = [
   './assets/icon-512.png',
   './assets/apple-touch-icon.png',
   './assets/logo-qberries.png',
-  './assets/logo.png',
-  './assets/FONDO.jpg'
+  './assets/FONDO.jpg',
+  './data/plano-cosecha.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -64,11 +69,6 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('.html');
 
-  const isData =
-    url.pathname.indexOf('/data/') >= 0 ||
-    url.pathname.indexOf('produccion_agg.json') >= 0 ||
-    url.pathname.indexOf('/api/') >= 0;
-
   if (isHtml) {
     event.respondWith(
       fetch(req)
@@ -79,20 +79,6 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() =>
           caches.match('./index.html').then((r) => r || caches.match('./'))
-        )
-    );
-    return;
-  }
-
-  /* Datos Excel/JSON: siempre red primero; caché solo si no hay internet */
-  if (isData) {
-    event.respondWith(
-      fetch(req, { cache: 'no-store' })
-        .then((res) => res)
-        .catch(() =>
-          caches.match('./data/produccion_agg.json').then((cached) => {
-            return cached || new Response('[]', { headers: { 'Content-Type': 'application/json' } });
-          })
         )
     );
     return;

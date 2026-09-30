@@ -204,7 +204,7 @@ QB.descartes = {
     if (this._ready && !force) return this._byFecha;
     let remote = null;
     try {
-      const res = await fetch('data/descartes.json', { cache: 'no-cache' });
+      const res = await fetch('data/descartes.json', { cache: 'force-cache' });
       if (res.ok) remote = await res.json();
     } catch (e) {
       remote = null;

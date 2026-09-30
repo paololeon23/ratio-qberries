@@ -7,146 +7,148 @@ QB.supervisors = {
    * @type {{nombre:string,dni:string,lic:string,fecha:string,activo?:boolean,nota?:string}[]}
    */
   rows: [
-    /* —— 2026-08-25 (36 asignaciones · planilla del día) —— */
-    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-25' },
+    /* Orden: fecha, y dentro de cada fecha el número de LIC. */
+
+    /* —— 2026-08-25 · 36 LIC —— */
     { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 01', fecha: '2026-08-25' },
-    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-25' },
-    { nombre: 'TIRADO VERGARA FIORELLA VERENISE', dni: '74068569', lic: 'LIC 64', fecha: '2026-08-25' },
+    { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-25' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-25' },
+    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-25' },
+    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 04', fecha: '2026-08-25' },
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-25' },
+    { nombre: 'MIRANDA PALACIOS ERNESTINA EVELYN', dni: '70132627', lic: 'LIC 06', fecha: '2026-08-25' },
+    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-25' },
+    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-25' },
+    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-25' },
+    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-25' },
+    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-25' },
     { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-25' },
     { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-08-25' },
-    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-25' },
-    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-25' },
-    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-25' },
-    { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-08-25' },
-    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-25' },
-    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-25' },
-    { nombre: 'NAMOC NARRO BIVIANA DE LOS ANGELES', dni: '74047419', lic: 'LIC 59', fecha: '2026-08-25' },
-    { nombre: 'TORRES GONZALEZ DE AQUINO MARTHA KARINA', dni: '72961122', lic: 'LIC 52', fecha: '2026-08-25' },
-    { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-25' },
-    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 18', fecha: '2026-08-25' },
-    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-25' },
-    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-25' },
-    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-25' },
-    { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-25' },
-    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-25' },
-    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-25' },
-    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-25' },
-    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-08-25' },
-    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-25' },
-    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-25' },
     { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 17', fecha: '2026-08-25' },
-    { nombre: 'MIRANDA PALACIOS ERNESTINA EVELYN', dni: '70132627', lic: 'LIC 06', fecha: '2026-08-25' },
-    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-25' },
-    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-25' },
-    { nombre: 'RIOS MEDINA DAHIRA MICAELA', dni: '60467254', lic: 'LIC 62', fecha: '2026-08-25' },
+    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 18', fecha: '2026-08-25' },
+    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-25' },
     { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-25' },
+    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-25' },
+    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-25' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-25' },
+    { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-08-25' },
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-25' },
     { nombre: 'UCEDA ARIAS JOEL ALEXANDER', dni: '70657242', lic: 'LIC 39', fecha: '2026-08-25' },
-    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-25' },
-    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-25' },
-    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 04', fecha: '2026-08-25' },
+    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-25' },
+    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-25' },
+    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-25' },
+    { nombre: 'TORRES GONZALEZ DE AQUINO MARTHA KARINA', dni: '72961122', lic: 'LIC 52', fecha: '2026-08-25' },
+    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-25' },
+    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-25' },
+    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-25' },
+    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-08-25' },
+    { nombre: 'NAMOC NARRO BIVIANA DE LOS ANGELES', dni: '74047419', lic: 'LIC 59', fecha: '2026-08-25' },
+    { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-25' },
+    { nombre: 'RIOS MEDINA DAHIRA MICAELA', dni: '60467254', lic: 'LIC 62', fecha: '2026-08-25' },
+    { nombre: 'TIRADO VERGARA FIORELLA VERENISE', dni: '74068569', lic: 'LIC 64', fecha: '2026-08-25' },
 
-    /* —— 2026-08-26 (32 asignaciones) —— */
-    { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 57', fecha: '2026-08-26' },
-    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-26' },
-    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-26' },
-    { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-26' },
-    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 43', fecha: '2026-08-26' },
-    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-26' },
-    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-08-26' },
-    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-08-26' },
-    { nombre: 'MEZA HUAMAN ELIAS ELISEO', dni: '78011755', lic: 'LIC 63', fecha: '2026-08-26' },
-    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-26' },
-    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-26' },
+    /* —— 2026-08-26 · 32 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-26' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-26' },
+    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-26' },
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-26' },
+    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-26' },
+    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-26' },
+    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-26' },
+    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-26' },
+    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-26' },
     { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-26' },
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-08-26' },
+    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-26' },
+    { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-26' },
+    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-26' },
+    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-26' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-26' },
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-26' },
+    { nombre: 'UCEDA ARIAS JOEL ALEXANDER', dni: '70657242', lic: 'LIC 39', fecha: '2026-08-26' },
+    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-26' },
     { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-26' },
+    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 43', fecha: '2026-08-26' },
+    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-26' },
+    { nombre: 'TORRES GONZALEZ DE AQUINO MARTHA KARINA', dni: '72961122', lic: 'LIC 52', fecha: '2026-08-26' },
+    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-26' },
     { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-26' },
     { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-26' },
-    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-26' },
-    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-26' },
+    { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 57', fecha: '2026-08-26' },
+    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-08-26' },
     { nombre: 'NAMOC NARRO BIVIANA DE LOS ANGELES', dni: '74047419', lic: 'LIC 59', fecha: '2026-08-26' },
-    { nombre: 'TIRADO VERGARA FIORELLA VERENISE', dni: '74068569', lic: 'LIC 64', fecha: '2026-08-26' },
-    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-26' },
-    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-26' },
-    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-26' },
-    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-26' },
-    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-26' },
-    { nombre: 'UCEDA ARIAS JOEL ALEXANDER', dni: '70657242', lic: 'LIC 39', fecha: '2026-08-26' },
-    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-26' },
-    { nombre: 'TORRES GONZALEZ DE AQUINO MARTHA KARINA', dni: '72961122', lic: 'LIC 52', fecha: '2026-08-26' },
-    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-26' },
-    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-26' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-26' },
-    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-26' },
+    { nombre: 'MEZA HUAMAN ELIAS ELISEO', dni: '78011755', lic: 'LIC 63', fecha: '2026-08-26' },
+    { nombre: 'TIRADO VERGARA FIORELLA VERENISE', dni: '74068569', lic: 'LIC 64', fecha: '2026-08-26' },
 
-    /* —— 2026-08-27 (29 asignaciones) —— */
+    /* —— 2026-08-27 · 29 LIC —— */
+    { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-27' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-27' },
+    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-27' },
+    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-27' },
     { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-27' },
     { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-27' },
+    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-27' },
+    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-27' },
+    { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-27' },
+    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-27' },
+    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-27' },
     { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-27' },
     { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-27' },
-    { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-27' },
-    { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-27' },
-    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 43', fecha: '2026-08-27' },
-    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-27' },
-    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-27' },
-    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-27' },
     { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-27' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-27' },
+    { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-08-27' },
     { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-27' },
-    { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-27' },
+    { nombre: 'UCEDA ARIAS JOEL ALEXANDER', dni: '70657242', lic: 'LIC 39', fecha: '2026-08-27' },
+    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-27' },
+    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-27' },
+    { nombre: 'HUAMAN ESPARZA EDELMIRA', dni: '77160560', lic: 'LIC 43', fecha: '2026-08-27' },
+    { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-27' },
+    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-27' },
+    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-27' },
+    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-27' },
     { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 57', fecha: '2026-08-27' },
     { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-08-27' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-27' },
-    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-27' },
-    { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-27' },
-    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-27' },
-    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-27' },
-    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-27' },
     { nombre: 'RIOS MEDINA DAHIRA MICAELA', dni: '60467254', lic: 'LIC 62', fecha: '2026-08-27' },
-    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-27' },
-    { nombre: 'UCEDA ARIAS JOEL ALEXANDER', dni: '70657242', lic: 'LIC 39', fecha: '2026-08-27' },
-    { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-27' },
-    { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-08-27' },
-    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-27' },
-    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-27' },
-    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-27' },
 
-    /* —— 2026-08-28 (3 asignaciones) —— */
-    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-28' },
+    /* —— 2026-08-28 · 3 LIC —— */
     { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 12', fecha: '2026-08-28' },
+    { nombre: 'SALAZAR AURORA INGRID JHOANA', dni: '75075892', lic: 'LIC 18', fecha: '2026-08-28' },
     { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-08-28' },
 
-    /* —— 2026-08-31 (29 asignaciones) —— */
-    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-31' },
-    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-08-31' },
-    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-31' },
-    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-31' },
-    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-31' },
-    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-31' },
-    { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-31' },
+    /* —— 2026-08-31 · 29 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-08-31' },
-    { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-31' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-08-31' },
     { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-08-31' },
-    { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-31' },
-    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-31' },
-    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-31' },
-    { nombre: 'ARMAS DIAZ CRISTIAN DANIEL', dni: '74959924', lic: 'LIC 36', fecha: '2026-08-31' },
-    { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 57', fecha: '2026-08-31' },
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-08-31' },
     { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-08-31' },
-    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-31' },
-    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-31' },
-    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-31' },
-    { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 17', fecha: '2026-08-31' },
-    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-31' },
-    { nombre: 'RIOS MEDINA DAHIRA MICAELA', dni: '60467254', lic: 'LIC 62', fecha: '2026-08-31' },
-    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-31' },
-    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-31' },
-    { nombre: 'NAMOC NARRO BIVIANA DE LOS ANGELES', dni: '74047419', lic: 'LIC 59', fecha: '2026-08-31' },
-    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-31' },
+    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 08', fecha: '2026-08-31' },
+    { nombre: 'CHAVEZ ALVA CARLOS ENRIQUE', dni: '45206311', lic: 'LIC 10', fecha: '2026-08-31' },
     { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-08-31' },
-    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 43', fecha: '2026-08-31' },
+    { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 13', fecha: '2026-08-31' },
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-08-31' },
+    { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 17', fecha: '2026-08-31' },
     { nombre: 'LEON TRIGOSO JHONY ANDRONICO', dni: '71806261', lic: 'LIC 18', fecha: '2026-08-31' },
+    { nombre: 'PURIZAGA SAAVEDRA PIERRE OSNAR', dni: '70192702', lic: 'LIC 24', fecha: '2026-08-31' },
+    { nombre: 'HERRERA ALBERCA PAMELA', dni: '77534125', lic: 'LIC 25', fecha: '2026-08-31' },
+    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 26', fecha: '2026-08-31' },
+    { nombre: 'ROJAS AREDO YERSI YEN', dni: '75141739', lic: 'LIC 27', fecha: '2026-08-31' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-08-31' },
+    { nombre: 'ARMAS DIAZ CRISTIAN DANIEL', dni: '74959924', lic: 'LIC 36', fecha: '2026-08-31' },
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-08-31' },
+    { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-08-31' },
+    { nombre: 'REBAZA SALINAS ALEXANDER YONATHAN', dni: '60836174', lic: 'LIC 42', fecha: '2026-08-31' },
+    { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 43', fecha: '2026-08-31' },
+    { nombre: 'CUEVA GUILLERMO KENNET ANDERSON', dni: '71880419', lic: 'LIC 53', fecha: '2026-08-31' },
+    { nombre: 'HERRERA ALBERCA MARIELA', dni: '61512235', lic: 'LIC 55', fecha: '2026-08-31' },
+    { nombre: 'VEGA BENITES WILMER CHANEL', dni: '70875214', lic: 'LIC 56', fecha: '2026-08-31' },
+    { nombre: 'DIAZ VARAS FANNY DEL MILAGRO', dni: '43558894', lic: 'LIC 57', fecha: '2026-08-31' },
+    { nombre: 'NAMOC NARRO BIVIANA DE LOS ANGELES', dni: '74047419', lic: 'LIC 59', fecha: '2026-08-31' },
+    { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-08-31' },
+    { nombre: 'RIOS MEDINA DAHIRA MICAELA', dni: '60467254', lic: 'LIC 62', fecha: '2026-08-31' },
 
-    /* —— 2026-09-01 (según padrón de descartes del día) —— */
+    /* —— 2026-09-01 · 28 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-01' },
     { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-09-01' },
     { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-09-01' },
@@ -176,7 +178,7 @@ QB.supervisors = {
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-09-01' },
     { nombre: 'ANTICONA SOTO CRISTHIAN ALEXANDER', dni: '71405307', lic: 'LIC 62', fecha: '2026-09-01' },
 
-    /* —— 2026-09-02 (según padrón de descartes del día) —— */
+    /* —— 2026-09-02 · 27 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-02' },
     { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-09-02' },
     { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-09-02' },
@@ -205,10 +207,13 @@ QB.supervisors = {
     { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-09-02' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-09-02' },
 
-    /* —— 2026-09-08 —— */
+    /* —— 2026-09-08 · 1 LIC —— */
     { nombre: 'DELGADO ABANTO SUSAN', dni: '74959142', lic: 'LIC 28', fecha: '2026-09-08' },
 
-    /* —— 2026-09-11 (24 asignaciones · padrón del día) —— */
+    /* —— 2026-09-10 · 1 LIC —— */
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-09-10' },
+
+    /* —— 2026-09-11 · 24 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-11' },
     { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 03', fecha: '2026-09-11' },
     { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-11' },
@@ -234,10 +239,7 @@ QB.supervisors = {
     { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-09-11' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-09-11' },
 
-    /* —— 2026-09-10 (1 asignación conocida) —— */
-    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-09-10' },
-
-    /* —— 2026-09-14 (23 asignaciones · padrón del día) —— */
+    /* —— 2026-09-14 · 23 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-14' },
     { nombre: 'NAVEZ CARBAJAL YOVER OSWALDO', dni: '76774075', lic: 'LIC 04', fecha: '2026-09-14' },
     { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-14' },
@@ -262,11 +264,11 @@ QB.supervisors = {
     { nombre: 'LUCANO MALCA MOISES', dni: '76261283', lic: 'LIC 58', fecha: '2026-09-14' },
     { nombre: 'FUENTES VALIENTE DEIMAR ULISES', dni: '74942842', lic: 'LIC 60', fecha: '2026-09-14' },
 
-    /* —— 2026-09-16 (17 asignaciones · padrón del día) —— */
+    /* —— 2026-09-16 · 18 LIC —— */
     { nombre: 'PLASENCIA CORREA NADIA YVONNE', dni: '43583858', lic: 'LIC 02', fecha: '2026-09-16' },
     { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-16' },
     { nombre: 'CHACON BERMUDEZ NADIA SARAHI', dni: '77146080', lic: 'LIC 06', fecha: '2026-09-16' },
-    { nombre: 'RODRIGUEZ CABRERA KENYI JENNY', dni: '70507014', lic: 'LIC 07', fecha: '2026-09-16' },
+    { nombre: 'SANTOS RODRÍGUEZ GUTIERREZ', dni: '19085520', lic: 'LIC 07', fecha: '2026-09-16' },
     { nombre: 'PEÑA ROJAS LAURA PATRICIA', dni: '45372928', lic: 'LIC 11', fecha: '2026-09-16' },
     { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 15', fecha: '2026-09-16' },
     { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 17', fecha: '2026-09-16' },
@@ -278,20 +280,71 @@ QB.supervisors = {
     { nombre: 'TRONCOSO SANCHEZ HENRY BRAULIO', dni: '73634792', lic: 'LIC 35', fecha: '2026-09-16' },
     { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 38', fecha: '2026-09-16' },
     { nombre: 'CASIANO CABRERA JAYNI PAMELA', dni: '70135405', lic: 'LIC 41', fecha: '2026-09-16' },
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 43', fecha: '2026-09-16' },
     { nombre: 'GUARNIZ MARREROS NELIXA VIVIANA', dni: '63249902', lic: 'LIC 44', fecha: '2026-09-16' },
-    { nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER', dni: '60741145', lic: 'LIC 52', fecha: '2026-09-16' },
+    { nombre: 'VARGAS DÍAZ ALDRIN', dni: '70656198', lic: 'LIC 52', fecha: '2026-09-16' },
 
-    /* —— Bajas / sin LIC (historial · no lookup) —— */
+    /* —— 2026-09-21 · 1 LIC —— */
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 43', fecha: '2026-09-21' },
+
+    /* —— 2026-09-23 · 1 LIC —— */
+    { nombre: 'VILCA BRICEÑO ALEXANDRA MARIA LAURA', dni: '76986313', lic: 'LIC 43', fecha: '2026-09-23' },
+
+    /* —— 2026-09-24 · 1 LIC —— */
+    { nombre: 'HILARIO AVALOS EVELYN', dni: '48446147', lic: 'LIC 35', fecha: '2026-09-24' },
+
+    /* —— 2026-09-28 · mismos jefes en los LIC de esa cosecha —— */
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-28' },
+    { nombre: 'TELLO BAZAURI LUISA KATHERINE', dni: '73130060', lic: 'LIC 14', fecha: '2026-09-28' },
+    { nombre: 'VEGA ULLOA KELVIN MILLER', dni: '60137914', lic: 'LIC 19', fecha: '2026-09-28' },
+    { nombre: 'VALVERDE REYES ANDY MIGUEL', dni: '76427792', lic: 'LIC 20', fecha: '2026-09-28' },
+    { nombre: 'VASQUEZ VALQUI CRISTIAN ALEXANDER', dni: '74067759', lic: 'LIC 21', fecha: '2026-09-28' },
+    { nombre: 'VILLANUEVA FLORES JACKELINE', dni: '81560694', lic: 'LIC 22', fecha: '2026-09-28' },
+    { nombre: 'YAHUARCANI MANIHUARI VICTOR ATILIO', dni: '47811732', lic: 'LIC 29', fecha: '2026-09-28' },
+    { nombre: 'MALCA VALERIANO KEVIN MAILIN', dni: '70287066', lic: 'LIC 30', fecha: '2026-09-28' },
+    { nombre: 'ABANTO CUEVA JOSE LUIS', dni: '48402226', lic: 'LIC 31', fecha: '2026-09-28' },
+    { nombre: 'NAVARRO MANTILLA ARNOLD JAFET', dni: '73317860', lic: 'LIC 33', fecha: '2026-09-28' },
+    { nombre: 'LOPEZ ALFARO CARMEN ROSA', dni: '72009029', lic: 'LIC 47', fecha: '2026-09-28' },
+    { nombre: 'AGUIRRE NORIEGA MARCO ANTONIO', dni: '18851808', lic: 'LIC 49', fecha: '2026-09-28' },
+    { nombre: 'PONCE RUIZ FERNANDO', dni: '44456891', lic: 'LIC 51', fecha: '2026-09-28' },
+    { nombre: 'VARGAS DIAZ ALDRIN KERVIN', dni: '70656198', lic: 'LIC 52', fecha: '2026-09-28' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 54', fecha: '2026-09-28' },
+    { nombre: 'SIFUENTES VIDAL CRISTIAN DAVID', dni: '74954115', lic: 'LIC 54', fecha: '2026-09-28' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 61', fecha: '2026-09-28' },
+    { nombre: 'TRUJILLO MENDOZA ROSMEL KENYI', dni: '76357590', lic: 'LIC 65', fecha: '2026-09-28' },
+
+    /* —— 2026-09-29 · 18 LIC —— */
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-09-29' },
+    { nombre: 'TELLO BAZAURI LUISA KATHERINE', dni: '73130060', lic: 'LIC 14', fecha: '2026-09-29' },
+    { nombre: 'VEGA ULLOA KELVIN MILLER', dni: '60137914', lic: 'LIC 19', fecha: '2026-09-29' },
+    { nombre: 'VALVERDE REYES ANDY MIGUEL', dni: '76427792', lic: 'LIC 20', fecha: '2026-09-29' },
+    { nombre: 'VASQUEZ VALQUI CRISTIAN ALEXANDER', dni: '74067759', lic: 'LIC 21', fecha: '2026-09-29' },
+    { nombre: 'VILLANUEVA FLORES JACKELINE', dni: '81560694', lic: 'LIC 22', fecha: '2026-09-29' },
+    { nombre: 'YAHUARCANI MANIHUARI VICTOR ATILIO', dni: '47811732', lic: 'LIC 29', fecha: '2026-09-29' },
+    { nombre: 'MALCA VALERIANO KEVIN MAILIN', dni: '70287066', lic: 'LIC 30', fecha: '2026-09-29' },
+    { nombre: 'ABANTO CUEVA JOSE LUIS', dni: '48402226', lic: 'LIC 31', fecha: '2026-09-29' },
+    { nombre: 'NAVARRO MANTILLA ARNOLD JAFET', dni: '73317860', lic: 'LIC 33', fecha: '2026-09-29' },
+    { nombre: 'LOPEZ ALFARO CARMEN ROSA', dni: '72009029', lic: 'LIC 47', fecha: '2026-09-29' },
+    { nombre: 'AGUIRRE NORIEGA MARCO ANTONIO', dni: '18851808', lic: 'LIC 49', fecha: '2026-09-29' },
+    { nombre: 'PONCE RUIZ FERNANDO', dni: '44456891', lic: 'LIC 51', fecha: '2026-09-29' },
+    { nombre: 'VARGAS DIAZ ALDRIN KERVIN', dni: '70656198', lic: 'LIC 52', fecha: '2026-09-29' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 54', fecha: '2026-09-29' },
+    { nombre: 'SIFUENTES VIDAL CRISTIAN DAVID', dni: '74954115', lic: 'LIC 54', fecha: '2026-09-29' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 61', fecha: '2026-09-29' },
+    { nombre: 'TRUJILLO MENDOZA ROSMEL KENYI', dni: '76357590', lic: 'LIC 65', fecha: '2026-09-29' },
+    { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 43', fecha: '2026-09-29' },
+
+    /* —— Bajas / sin LIC (no entran al mapa) —— */
+    { nombre: 'ANTICONA SOTO CRISTHIAN ALEXANDER', dni: '71405307', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'BAZAN ÑIQUIN JOSE GABRIEL', dni: '74984893', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'DE LA CRUZ SAAVEDRA JHONATAN JOEL', dni: '73503134', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'LARA GUARNIZ LUIS MARIO', dni: '61014348', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'OLIVARES AGUILAR ELCIRA', dni: '48590607', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'PADILLA NUÑEZ JESUS MARIA', dni: '74239909', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
+    { nombre: 'SALVADOR FLOREANO LUZ DEL ROCIO', dni: '75501379', lic: '', fecha: '2026-08-27', activo: false, nota: 'calidad' },
+    { nombre: 'TERRONES SORIA ESMERALDA BLANCA GETSABET', dni: '77914317', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
     { nombre: 'VASQUEZ DELGADO ROBERTO CARLOS', dni: '42493820', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
     { nombre: 'VASQUEZ URBINA EDIN CLAY', dni: '44141396', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'OLIVARES AGUILAR ELCIRA', dni: '48590607', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'LARA GUARNIZ LUIS MARIO', dni: '61014348', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'ANTICONA SOTO CRISTHIAN ALEXANDER', dni: '71405307', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'DE LA CRUZ SAAVEDRA JHONATAN JOEL', dni: '73503134', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'PADILLA NUÑEZ JESUS MARIA', dni: '74239909', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'BAZAN ÑIQUIN JOSE GABRIEL', dni: '74984893', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'TERRONES SORIA ESMERALDA BLANCA GETSABET', dni: '77914317', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
-    { nombre: 'SALVADOR FLOREANO LUZ DEL ROCIO', dni: '75501379', lic: '', fecha: '2026-08-27', activo: false, nota: 'calidad' }
   ],
 
   /**
@@ -343,11 +396,11 @@ QB.supervisors = {
       ]
     },
     {
-      nombre: 'VARGAS DIAZ ALDRIN',
-      dni: '70656198',
+      nombre: 'PAREDES GALARRETA CRISTHIAN JEANPIER',
+      dni: '60741145',
       supervisores: [
         '76774075',
-        '60741145',
+        '70656198',
         '76986313',
         '61512235',
         '70875214',
@@ -374,6 +427,14 @@ QB.supervisors = {
     const m = s.match(/LIC\s*0*(\d{1,2})/i);
     if (m) return 'LIC ' + String(m[1]).padStart(2, '0');
     return s.toUpperCase();
+  },
+
+  /** Grupos que no se muestran ni cuentan en reportes. */
+  hiddenLics: [],
+
+  isHiddenLic(grupo) {
+    const key = this.licKey(grupo);
+    return (this.hiddenLics || []).indexOf(key) >= 0;
   },
 
   isActive(r) {
@@ -458,10 +519,32 @@ QB.supervisors = {
         nombre: r.nombre,
         dni,
         lic: key,
-        fecha
+        fecha,
+        soloDia: r.soloDia === true
       };
       fechas.add(fecha);
     });
+    const extras = window.QB && QB.jefesDia;
+    if (extras) {
+      Object.keys(extras).forEach((fechaKey) => {
+        const f = this.toIso(fechaKey);
+        const list = extras[fechaKey];
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !Array.isArray(list)) return;
+        list.forEach((r) => {
+          const key = this.licKey(r.lic);
+          if (!f || !key) return;
+          if (!map[f]) map[f] = {};
+          map[f][key] = {
+            nombre: r.nombre,
+            dni: this.normDni(r.dni),
+            lic: key,
+            fecha: f,
+            soloDia: r.soloDia !== false
+          };
+          fechas.add(f);
+        });
+      });
+    }
     this._byLicByFecha = map;
     this._fechasOrd = [...fechas].sort((a, b) => b.localeCompare(a));
     this.rebuildGenerales();
@@ -475,6 +558,8 @@ QB.supervisors = {
         nombre: String(g.nombre || '').trim(),
         dni: this.normDni(g.dni)
       };
+      const self = this.normDni(g.dni);
+      if (self) map[self] = info;
       (g.supervisores || []).forEach((dni) => {
         const key = this.normDni(dni);
         if (key) map[key] = info;
@@ -516,9 +601,10 @@ QB.supervisors = {
     for (let i = 0; i < (this._fechasOrd || []).length; i++) {
       const fd = this._fechasOrd[i];
       if (fd > f) continue;
-      if (this._byLicByFecha[fd] && this._byLicByFecha[fd][lic]) {
-        return this._byLicByFecha[fd][lic];
-      }
+      const hit = this._byLicByFecha[fd] && this._byLicByFecha[fd][lic];
+      if (!hit) continue;
+      if (hit.soloDia && fd !== f) continue;
+      return hit;
     }
     return null;
   },

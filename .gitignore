@@ -6,3 +6,9 @@ data/produccion_agg.json
 .DS_Store
 .netlify
 node_modules
+.tmp-semana/
+.tmp-check-xlsx/
+.tmp-packs/
+.tmp-semana-src.zip
+.tmp-aug31.json
+.tmp-*

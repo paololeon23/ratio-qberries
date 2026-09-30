@@ -19,7 +19,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/app.css?v=m355" />
+  <link rel="preload" as="image" href="assets/logo-qberries.png" />
+  <link rel="stylesheet" href="css/app.css?v=m455" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -128,16 +129,27 @@
           <span class="status-dot" aria-hidden="true"></span>
           <span class="status-text">EN VIVO</span>
         </span>
-        <button
-          type="button"
-          id="btnRefresh"
-          class="status-chip status-chip-btn is-refresh"
-          title="Actualizar información o la app"
-          aria-label="Actualizar"
-        >
-          <span class="status-ico" id="icoRefresh" aria-hidden="true"></span>
-          <span class="status-text">Actualizar</span>
-        </button>
+        <div class="status-actions">
+          <button
+            type="button"
+            id="btnRefresh"
+            class="status-chip status-chip-btn is-refresh"
+            title="Actualizar información o la app"
+            aria-label="Actualizar"
+          >
+            <span class="status-ico" id="icoRefresh" aria-hidden="true"></span>
+            <span class="status-text">Actualizar</span>
+          </button>
+          <button
+            type="button"
+            id="btnAuthGate"
+            class="status-chip status-chip-btn is-user"
+            title="Historial de trabajadores autorizados"
+            aria-label="Historial de trabajadores autorizados"
+          >
+            <span class="status-ico" id="icoAuthGate" aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
     </div>
     <div class="header-accent" aria-hidden="true"></div>
@@ -145,7 +157,16 @@
 
   <div class="sync-banner" id="syncBanner" hidden role="status" aria-live="polite">
     <span class="sync-spin" aria-hidden="true"></span>
-    <p id="syncBannerText">Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.</p>
+    <div class="sync-banner-body">
+      <p class="sync-banner-kicker">Sincronización</p>
+      <p id="syncBannerText">Estamos conectando… aún puedes usar la app. Te avisamos cuando esté actualizada.</p>
+      <div class="sync-progress" id="syncProgress" hidden>
+        <div class="sync-progress-track" aria-hidden="true">
+          <span class="sync-progress-fill" id="syncProgressFill"></span>
+        </div>
+        <span class="sync-progress-pct" id="syncProgressPct">0%</span>
+      </div>
+    </div>
   </div>
 
   <section class="hero-summary" id="heroSummary" aria-live="polite"></section>
@@ -232,7 +253,7 @@
               <span class="title-ico tone-green" data-title-ico="building" aria-hidden="true"></span>
               <div>
                 <h2>LIC con más producción</h2>
-                <p class="muted">Grupos con más jarras del día</p>
+                <p class="muted">Puestos por jarras · 1.º el que más sacó · apellido del supervisor</p>
               </div>
             </div>
             <div class="chart-actions">
@@ -240,17 +261,20 @@
               <button type="button" class="btn btn-ghost btn-icon" data-share="chartTopLic" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
             </div>
           </div>
-          <div class="chart-wrap chart-same" id="chartTopLic"></div>
+          <div class="lic-prod-board">
+            <div class="lic-cups" id="chartTopLicCups" aria-label="Puestos con copa y medallas"></div>
+            <div class="chart-wrap chart-lic-all" id="chartTopLic"></div>
+          </div>
           <p class="chart-insight" id="insightTopLic"></p>
         </section>
 
-        <section class="panel chart-panel chart-panel-wide" title="Supervisor con más liderazgo">
+        <section class="panel chart-panel chart-panel-wide" title="Todos los supervisores">
           <div class="panel-head">
             <div class="panel-title">
               <span class="title-ico tone-lime" data-title-ico="crown" aria-hidden="true"></span>
               <div>
-                <h2>Supervisor · grupo con más liderazgo</h2>
-                <p class="muted">Mejor ritmo · jarras por persona del grupo</p>
+                <h2>Todos los supervisores</h2>
+                <p class="muted" id="supRankMeta">Puestos por ratio · 1.º el más alto · jarras · kg</p>
               </div>
             </div>
             <div class="chart-actions">
@@ -258,26 +282,8 @@
               <button type="button" class="btn btn-ghost btn-icon" data-share="chartLiderazgo" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
             </div>
           </div>
-          <div class="chart-wrap chart-same" id="chartLiderazgo"></div>
+          <div class="chart-wrap chart-wrap-table" id="chartLiderazgo"></div>
           <p class="chart-insight" id="insightLiderazgo"></p>
-        </section>
-
-        <section class="panel chart-panel chart-panel-wide" title="Peores LIC en producción">
-          <div class="panel-head">
-            <div class="panel-title">
-              <span class="title-ico tone-orange" data-title-ico="trendDown" aria-hidden="true"></span>
-              <div>
-                <h2>Los peores LIC en producción</h2>
-                <p class="muted">Grupos con menos jarras · priorizar apoyo</p>
-              </div>
-            </div>
-            <div class="chart-actions">
-              <button type="button" class="btn btn-ghost btn-icon" data-img="chartPeoresLic" title="Descargar imagen del gráfico" aria-label="Descargar gráfico"></button>
-              <button type="button" class="btn btn-ghost btn-icon" data-share="chartPeoresLic" title="Compartir gráfico" aria-label="Compartir gráfico"></button>
-            </div>
-          </div>
-          <div class="chart-wrap chart-same" id="chartPeoresLic"></div>
-          <p class="chart-insight" id="insightPeoresLic"></p>
         </section>
       </div>
     </section>
@@ -293,13 +299,13 @@
             </div>
           </div>
           <div class="excel-actions" aria-label="Exportar Excel">
-            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Excel · todas las personas del día con menos de 30 jarras">
-              Excel &lt; 30
+            <button type="button" class="btn btn-excel" id="btnExcelLt40" title="Excel · mismas personas que la barra ≤30 · de 1 a 30 jarras">
+              Excel ≤ 30
             </button>
-            <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Excel · el resto del día · 30 jarras o más">
-              Excel ≥ 30
+            <button type="button" class="btn btn-excel is-high" id="btnExcelGt40" title="Excel · el resto del día · 31 jarras o más">
+              Excel ≥ 31
             </button>
-            <button type="button" class="btn btn-excel" id="btnExcelRatioGrupos" title="Excel · ratio por grupo · jarras, cosechadores, &lt;30 y ≥30">
+            <button type="button" class="btn btn-excel" id="btnExcelRatioGrupos" title="Excel · ratio por grupo · jarras, cosechadores, ≤30 y ≥31">
               Ratio Excel
             </button>
           </div>
@@ -334,8 +340,11 @@
             <button type="button" class="btn btn-excel" id="btnExcelPersonasDia" title="Excel · todas las personas · jarras y módulos">
               Excel personas
             </button>
-            <button type="button" class="btn btn-excel is-img" id="btnImgPersonasModulos" title="Imagen PNG · ratios cosecha/día separados por módulo">
-              Imagen módulos
+            <button type="button" class="btn btn-excel" id="btnExcelPersonasLt40" title="Excel · mismas personas que las barras ≤30 y 31-40 · de 1 a 40 jarras">
+              Excel ≤ 40
+            </button>
+            <button type="button" class="btn btn-excel is-high" id="btnExcelPersonasGt40" title="Excel · mismas personas que las barras desde 41-50 · 41 jarras o más">
+              Excel ≥ 41
             </button>
           </div>
         </div>
@@ -422,6 +431,21 @@
       </div>
     </section>
 
+    <section class="report-panel" id="panelHistorial" data-panel="historial" hidden>
+      <section class="panel historial-page-panel" title="Historial de trabajadores autorizados">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="title-ico tone-green" data-title-ico="user" aria-hidden="true"></span>
+            <div>
+              <h2>Historial autorizado</h2>
+              <p class="muted" id="historialPageMeta">Semana 39</p>
+            </div>
+          </div>
+        </div>
+        <div id="historialPage"></div>
+      </section>
+    </section>
+
     <section class="report-panel" id="panelComparacion" data-panel="comparacion" hidden>
       <section class="panel compare-panel" title="Comparación de todas las hojas de cosecha">
         <div class="panel-head">
@@ -506,19 +530,24 @@
 
   <div class="toast-host" id="toastHost" aria-live="polite"></div>
 
-  <script src="vendor/echarts.min.js"></script>
-  <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=m355"></script>
-  <script src="js/workers.js?v=m355"></script>
-  <script src="js/api.js?v=m355"></script>
-  <script src="js/icons.js?v=m355"></script>
-  <script src="js/avatars.js?v=m355"></script>
-  <script src="js/supervisors.js?v=m355"></script>
-  <script src="js/descartes.js?v=m355"></script>
-  <script src="js/charts.js?v=m355"></script>
-  <script src="js/select.js?v=m355"></script>
-  <script src="js/export.js?v=m355"></script>
-  <script src="js/app.js?v=m355"></script>
+  <script defer src="vendor/echarts.min.js"></script>
+  <script defer src="vendor/jspdf.umd.min.js"></script>
+  <script defer src="js/config.js?v=m455"></script>
+  <script defer src="js/workers.js?v=m455"></script>
+  <script defer src="js/plano.js?v=m455"></script>
+  <script defer src="js/api.js?v=m455"></script>
+  <script defer src="js/icons.js?v=m455"></script>
+  <script defer src="js/avatars.js?v=m455"></script>
+  <script defer src="js/jefes-dia.js?v=m455"></script>
+  <script defer src="js/supervisors.js?v=m455"></script>
+  <script defer src="js/historial-data.js?v=m455"></script>
+  <script defer src="js/historial-nombres.js?v=m455"></script>
+  <script defer src="js/historial.js?v=m455"></script>
+  <script defer src="js/descartes.js?v=m455"></script>
+  <script defer src="js/charts.js?v=m455"></script>
+  <script defer src="js/select.js?v=m455"></script>
+  <script defer src="js/export.js?v=m455"></script>
+  <script defer src="js/app.js?v=m455"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

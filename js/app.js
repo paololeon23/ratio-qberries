@@ -217,7 +217,7 @@
       document.body.classList.remove('is-ready');
       showLoadModal(
         'Bienvenido al programa de rendimiento de Q Berries',
-        'Espera un momento, por favor. Estamos trayendo la data.'
+        'Espera un momento, por favor.'
       );
     }
 
@@ -309,7 +309,8 @@
         }
         painted = true;
       }
-      if (QB.api.prefetchFechas && pack && pack.hojas && !r.error) {
+      /* Pantalla ya lista · las hojas más viejas se leen una por una, sin frenar. */
+      if (painted && pack && pack.hojas && !r.error && QB.api.prefetchFechas) {
         QB.api.prefetchFechas(pack.hojas, latest);
       }
       revealApp();

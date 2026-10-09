@@ -6,13 +6,14 @@
  * GET ?action=meta              → solo índice de hojas (ultra rápido, sin data)
  * GET ?action=ping              → health
  *
- * Lee TODAS las hojas con datos (Hoja 1, Hoja 2, Hoja 3…).
+ * Primera apertura: solo las 2 últimas hojas. El resto se lee después, una por una.
  * Identidad: CI (fallback DNI). Jarras: C → FP → F=Caja.
- * Cache ~120s: índice + un día por KEY. “hoy” = última hoja con datos (no la fecha).
+ * “hoy” = última hoja con datos (no la fecha).
  */
 
 var TZ = 'America/Lima';
-var CACHE_TTL = 120;
+var CACHE_TTL = 21600;
+var PRIMERAS_HOJAS = 2;
 
 function doGet(e) {
   return responder_(procesar_(e, 'GET'));
@@ -147,7 +148,7 @@ function todo_(p) {
     } catch (e2) { /* rebuild */ }
   }
 
-  var loaded = loadAllSheetsCached_(cache, stamp);
+  var loaded = loadAllSheets_(fechaWant);
   if (!loaded || !loaded.ok) return empty_(loaded && loaded.hint ? loaded.hint : 'SIN_HOJA');
 
   var meta = buildMeta_(loaded);
@@ -169,10 +170,16 @@ function todo_(p) {
   var hojas = meta.hojas;
   var built = buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, fechaHoy, hojas, fechaAyer);
 
-  /* Solo este día. Armar todas las hojas antes de responder pasaba de 50s y el celular se quedaba en blanco. */
+  /* La respuesta es el día pedido. Si fue la apertura, también queda guardado el día anterior. */
   try {
     cache.put('todo_v4_meta_' + stamp, JSON.stringify(meta), CACHE_TTL);
     cache.put('todo_v4_day_' + stamp + '_' + fechaHoy, JSON.stringify(built), CACHE_TTL);
+    if (!fechaWant && fechasOrd.length > 1 && loaded.fechaCounts[fechasOrd[1]]) {
+      var f2 = fechasOrd[1];
+      var ayer2 = fechasOrd.length > 2 ? fechasOrd[2] : ayer_();
+      var built2 = buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, f2, hojas, ayer2);
+      cache.put('todo_v4_day_' + stamp + '_' + f2, JSON.stringify(built2), CACHE_TTL);
+    }
     cache.put('todo_v4_stamp', stamp, CACHE_TTL);
   } catch (e3) { /* ok */ }
 
@@ -271,10 +278,76 @@ function mergeMetaInto_(dayPack, cache, stamp) {
   } catch (e) { /* ok */ }
 }
 
-/** Una lectura getDataRange() por hoja · todas las hojas de producción */
-function loadAllSheets_() {
-  var sheets = listProdSheets_();
+/** Hojas llamadas "Hoja N" · sin leer celdas */
+function listHojaSheets_() {
+  var all = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var out = [];
+  for (var i = 0; i < all.length; i++) {
+    if (hojaNum_(all[i].getName()) >= 0 || parseSheetFecha_(all[i].getName())) out.push(all[i]);
+  }
+  return out;
+}
+
+function sheetKeyOf_(sh, index) {
+  return parseSheetFecha_(sh.getName()) || ('__hoja__' + index);
+}
+
+function readFechaMap_(cache) {
+  try {
+    var raw = cache.get('todo_v4_fechas_nombres');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed) return parsed;
+    }
+  } catch (e) { /* vacío */ }
+  return {};
+}
+
+function writeFechaMap_(cache, map) {
+  try {
+    cache.put('todo_v4_fechas_nombres', JSON.stringify(map), CACHE_TTL);
+  } catch (e2) { /* ok */ }
+}
+
+/** Las 2 hojas con número más alto (Hoja 46, Hoja 45…). */
+function topIndexes_(sheets, n) {
+  var ranked = [];
+  for (var i = 0; i < sheets.length; i++) {
+    var num = hojaNum_(sheets[i].getName());
+    ranked.push({ i: i, n: num >= 0 ? num : i });
+  }
+  ranked.sort(function (a, b) { return b.n - a.n; });
+  var out = [];
+  for (var k = 0; k < ranked.length && k < n; k++) out.push(ranked[k].i);
+  return out;
+}
+
+/**
+ * Sin fecha: solo las 2 últimas hojas. Con fecha: solo esa.
+ * El resto queda en el índice y se lee después, una por una.
+ */
+function loadAllSheets_(onlyKey) {
+  onlyKey = String(onlyKey || '');
+  var cache = CacheService.getScriptCache();
+  var fechaMap = readFechaMap_(cache);
+  var sheets = listHojaSheets_();
   if (!sheets.length) return { ok: false, hint: 'SIN_HOJA' };
+
+  var targets = {};
+  if (onlyKey) {
+    var found = false;
+    for (var j = 0; j < sheets.length; j++) {
+      if (sheetKeyOf_(sheets[j], j) === onlyKey) {
+        targets[j] = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return { ok: false, hint: 'SIN_FECHA' };
+  } else {
+    var tops = topIndexes_(sheets, PRIMERAS_HOJAS);
+    for (var t = 0; t < tops.length; t++) targets[tops[t]] = true;
+  }
 
   var fechaCounts = {};
   var agg = {};
@@ -284,10 +357,24 @@ function loadAllSheets_() {
   var anyRows = false;
 
   for (var s = 0; s < sheets.length; s++) {
-    var sh = sheets[s];
-    var grid = sh.getDataRange().getValues();
-    if (!grid || grid.length < 2) continue;
+    var key0 = sheetKeyOf_(sheets[s], s);
+    var name0 = sheets[s].getName();
+    sheetNames[key0] = name0;
+    sheetOrder[key0] = hojaNum_(name0) >= 0 ? hojaNum_(name0) : s;
+    var known = fechaMap[name0] || parseSheetFecha_(name0) || '';
+    sheetDisplayFechas[key0] = known || name0;
+    if (!targets[s]) fechaCounts[key0] = 0;
+  }
 
+  var readList = [];
+  for (var s2 = 0; s2 < sheets.length; s2++) {
+    if (targets[s2]) readList.push(s2);
+  }
+  for (var ri = 0; ri < readList.length; ri++) {
+  var s = readList[ri];
+  var sh = sheets[s];
+  var grid = sh.getDataRange().getValues();
+  if (grid && grid.length >= 2) {
     var headers = grid[0];
     var iCI = colIdentity_(headers);
     var iC = col_(headers, 'C');
@@ -300,15 +387,16 @@ function loadAllSheets_() {
     var iFecha = col_(headers, 'Fecha');
     var iLote = colLote_(headers);
     var iHuerto = col_(headers, 'Huerto');
-    if (iCI < 0) continue;
 
+    if (iCI >= 0) {
     var sheetFecha = parseSheetFecha_(sh.getName());
     var dominant = dominantFecha_(grid, iFecha);
     var displayFecha = sheetFecha || dominant || hoy_();
     var sheetKey = sheetFecha || ('__hoja__' + s);
     sheetNames[sheetKey] = sh.getName();
     sheetDisplayFechas[sheetKey] = displayFecha;
-    sheetOrder[sheetKey] = s;
+    fechaMap[sh.getName()] = displayFecha;
+    writeFechaMap_(cache, fechaMap);
 
     for (var r = 1; r < grid.length; r++) {
       var row = grid[r];
@@ -364,6 +452,8 @@ function loadAllSheets_() {
         }
       }
     }
+    }
+  }
   }
 
   if (!anyRows) return { ok: false, hint: 'SIN_FILAS' };
@@ -585,13 +675,11 @@ function empty_(reason) {
 
 function bookStamp_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheets = ss.getSheets();
-  var parts = [];
-  for (var i = 0; i < sheets.length; i++) {
-    var sh = sheets[i];
-    parts.push(sh.getName() + ':' + sh.getLastRow() + 'x' + sh.getLastColumn());
+  try {
+    return String(DriveApp.getFileById(ss.getId()).getLastUpdated().getTime());
+  } catch (e) {
+    return ss.getId();
   }
-  return parts.join('|');
 }
 
 function nowStr_() {

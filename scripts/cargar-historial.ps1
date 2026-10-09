@@ -124,7 +124,7 @@ if ($sheetXml) {
           }
         }
         'H' {
-          $d = ($val -replace '\D', '')
+          $d = ($txt -replace '\D', '')
           if ($d.Length -ge 7) { $ci = $d }
         }
         'I' { $ape = $txt }

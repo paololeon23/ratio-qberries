@@ -334,6 +334,33 @@ QB.supervisors = {
     { nombre: 'TRUJILLO MENDOZA ROSMEL KENYI', dni: '76357590', lic: 'LIC 65', fecha: '2026-09-29' },
     { nombre: 'JULCA GAMBOA DILMER ELICER', dni: '48533707', lic: 'LIC 43', fecha: '2026-09-29' },
 
+    /* —— 2026-10-01 · 18 LIC —— */
+    { nombre: 'LLAQUE ARGOMEDO GENESIS GUILIANA KEIKO', dni: '70559269', lic: 'LIC 05', fecha: '2026-10-01' },
+    { nombre: 'VEGA ULLOA KELVIN MILLER', dni: '60137914', lic: 'LIC 19', fecha: '2026-10-01' },
+    { nombre: 'VASQUEZ VALQUI CRISTIAN ALEXANDER', dni: '74067759', lic: 'LIC 21', fecha: '2026-10-01' },
+    { nombre: 'VILLANUEVA FLORES JACKELINE', dni: '81560694', lic: 'LIC 22', fecha: '2026-10-01' },
+    { nombre: 'YAHUARCANI MANIHUARI VICTOR ATILIO', dni: '47811732', lic: 'LIC 29', fecha: '2026-10-01' },
+    { nombre: 'MALCA VALERIANO KEVIN MAILIN', dni: '70287066', lic: 'LIC 30', fecha: '2026-10-01' },
+    { nombre: 'ABANTO CUEVA JOSE LUIS', dni: '48402226', lic: 'LIC 31', fecha: '2026-10-01' },
+    { nombre: 'VERGARA DAVILA KELINDA ELIZABETH', dni: '47117035', lic: 'LIC 32', fecha: '2026-10-01' },
+    { nombre: 'NAVARRO MANTILLA ARNOLD JAFET', dni: '73317860', lic: 'LIC 33', fecha: '2026-10-01' },
+    { nombre: 'NORIEGA PONTE MICELY', dni: '48268173', lic: 'LIC 34', fecha: '2026-10-01' },
+    { nombre: 'LOPEZ ALFARO CARMEN ROSA', dni: '72009029', lic: 'LIC 47', fecha: '2026-10-01' },
+    { nombre: 'MIRANDA CULQUE JOSE DAVID', dni: '47613298', lic: 'LIC 49', fecha: '2026-10-01' },
+    { nombre: 'PONCE RUIZ FERNANDO', dni: '44456891', lic: 'LIC 51', fecha: '2026-10-01' },
+    { nombre: 'VARGAS DIAZ ALDRIN KERVIN', dni: '70656198', lic: 'LIC 52', fecha: '2026-10-01' },
+    { nombre: 'HUARIPATA RAMIREZ PATRICK ALEJANDRO', dni: '74291763', lic: 'LIC 61', fecha: '2026-10-01' },
+    { nombre: 'TRUJILLO MENDOZA ROSMEL KENYI', dni: '76357590', lic: 'LIC 65', fecha: '2026-10-01' },
+    { nombre: 'VALVERDE REYES ANDY MIGUEL', dni: '76427792', lic: 'LIC 20', fecha: '2026-10-01' },
+    { nombre: 'SIFUENTES VIDAL CRISTIAN DAVID', dni: '74954115', lic: 'LIC 54', fecha: '2026-10-01' },
+
+    /* —— 2026-10-05 · LIC 54 —— */
+    { nombre: 'MIRANDA CULQUE JOSE DAVID', dni: '47613298', lic: 'LIC 54', fecha: '2026-10-05' },
+
+    /* —— 2026-10-06 · solo los que cambian ese día —— */
+    { nombre: 'AGUIRRE NORIEGA MARCO ANTONIO', dni: '18851808', lic: 'LIC 49', fecha: '2026-10-06' },
+    { nombre: 'MIRANDA CULQUE JOSE DAVID', dni: '47613298', lic: 'LIC 54', fecha: '2026-10-06' },
+
     /* —— Bajas / sin LIC (no entran al mapa) —— */
     { nombre: 'ANTICONA SOTO CRISTHIAN ALEXANDER', dni: '71405307', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },
     { nombre: 'BAZAN ÑIQUIN JOSE GABRIEL', dni: '74984893', lic: '', fecha: '2026-08-27', activo: false, nota: 'baja' },

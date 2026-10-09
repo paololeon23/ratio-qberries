@@ -194,7 +194,8 @@ QB.export = {
   async _tableChartPng(chartId) {
     const root = document.getElementById(chartId);
     const table = root && root.querySelector('.sup-rank-table');
-    if (!table) return null;
+    const card = root && root.querySelector('.sup-card');
+    if (!table && !card) return null;
 
     const fechaIso =
       (window.QB && QB.appFechaIso && QB.appFechaIso()) ||
@@ -204,7 +205,7 @@ QB.export = {
     const m = fechaTxt.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) fechaTxt = m[3] + '/' + m[2] + '/' + m[1];
 
-    if (!table.querySelectorAll('tbody tr').length) return null;
+    if (table && !table.querySelectorAll('tbody tr').length && !card) return null;
     /* Canvas fiable con copas SVG del frontend (sin foreignObject que rompe la descarga) */
     return this._tableChartPngFallback(chartId, fechaTxt);
   },
@@ -212,8 +213,10 @@ QB.export = {
   async _tableChartPngFallback(chartId, fechaTxt) {
     const root = document.getElementById(chartId);
     const table = root && root.querySelector('.sup-rank-table');
-    if (!table) return null;
-    const rows = Array.prototype.map.call(table.querySelectorAll('tbody tr'), (tr) => {
+    const cards = root ? root.querySelectorAll('.sup-card') : [];
+    let rows = [];
+    if (table && table.querySelectorAll('tbody tr').length) {
+      rows = Array.prototype.map.call(table.querySelectorAll('tbody tr'), (tr) => {
       const tds = tr.querySelectorAll('td');
       const nameEl = tds[1] && tds[1].querySelector('strong');
       const licEl = tds[1] && tds[1].querySelector('.sup-rank-lic');
@@ -239,6 +242,27 @@ QB.export = {
               : ''
       };
     });
+    } else if (cards.length) {
+      rows = Array.prototype.map.call(cards, (card) => {
+        const metrics = card.querySelectorAll('.sup-card-metrics b');
+        const bestEl = card.querySelector('.sup-card-best span');
+        return {
+          name: String((card.querySelector('strong') && card.querySelector('strong').textContent) || '').trim(),
+          lic: String((card.querySelector('.sup-rank-lic') && card.querySelector('.sup-rank-lic').textContent) || '').trim(),
+          best: bestEl ? String(bestEl.textContent || '').trim() : '',
+          jarras: String((metrics[0] && metrics[0].textContent) || '').trim(),
+          kg: String((metrics[1] && metrics[1].textContent) || '').trim(),
+          ratio: String((metrics[2] && metrics[2].textContent) || '').trim(),
+          medal: card.classList.contains('is-gold')
+            ? 'gold'
+            : card.classList.contains('is-silver')
+              ? 'silver'
+              : card.classList.contains('is-bronze')
+                ? 'bronze'
+                : ''
+        };
+      });
+    }
     if (!rows.length) return null;
 
     const cupGold = await this._cupImg('gold', 56);
@@ -439,7 +463,7 @@ QB.export = {
   async chartImage(chartId, filename) {
     try {
       /* Tabla HTML de supervisores: siempre esta ruta (no ECharts) */
-      if (document.querySelector('#' + chartId + ' .sup-rank-table')) {
+      if (document.querySelector('#' + chartId + ' .sup-rank-table, #' + chartId + ' .sup-card')) {
         const pack = await this._tableChartPng(chartId);
         if (!pack || !pack.blob) {
           this.toast('No se pudo generar la imagen', 'warn');
@@ -456,15 +480,27 @@ QB.export = {
       }
       const chart = QB.charts.instances[chartId];
       if (chart && typeof chart.getDataURL === 'function') {
-    const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
-    const a = document.createElement('a');
-    a.href = url;
-        a.download = filename || chartId + '.png';
-        document.body.appendChild(a);
-    a.click();
-        a.remove();
-    this.toast('Imagen del gráfico lista');
-    return url;
+        const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
+        const blob = await (await fetch(url)).blob();
+        const fname = filename || chartId + '.png';
+        const file = new File([blob], fname, { type: 'image/png' });
+        const touch = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+        if (touch && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: 'Rendimientos Q Berries',
+              text: 'Reporte de jarras · Q Berries Licapa',
+              files: [file]
+            });
+            this.toast('Imagen lista');
+            return url;
+          } catch (err) {
+            if (err && err.name === 'AbortError') return url;
+          }
+        }
+        this._downloadBlob(blob, fname);
+        this.toast('Imagen del gráfico lista');
+        return url;
       }
       this.toast('Gráfico no listo', 'warn');
     } catch (err) {
@@ -477,7 +513,7 @@ QB.export = {
     try {
       let blob = null;
       let fname = (title || chartId) + '.png';
-      if (document.querySelector('#' + chartId + ' .sup-rank-table')) {
+      if (document.querySelector('#' + chartId + ' .sup-rank-table, #' + chartId + ' .sup-card')) {
         const pack = await this._tableChartPng(chartId);
         if (pack) {
           blob = pack.blob;
@@ -764,6 +800,153 @@ QB.export = {
       };
     }
 
+    doc.save(filename);
+    this.toast('PDF descargado');
+    return null;
+  },
+
+  /** PDF de kg por encargado · Magica Licapa II */
+  encargadosPdf(meta) {
+    const PDF = this._pdfCtor();
+    if (!PDF) {
+      this.toast('PDF no disponible', 'warn');
+      return null;
+    }
+    const list = meta && meta.encargados ? meta.encargados : [];
+    if (!list.length) {
+      this.toast('Sin encargados para el PDF', 'warn');
+      return null;
+    }
+    const doc = new PDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const usableBottom = h - 22;
+    const fechaLabel = (meta && meta.fechaLabel) || '—';
+    const totalKg = Number(meta && meta.totalKg) || 0;
+    const fmtN = (n) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 1 });
+    const tableW = w - margin * 2;
+    const cols = [
+      { key: 'n', label: '#', w: 12 },
+      { key: 'nombre', label: 'Supervisor', w: 64 },
+      { key: 'jarras', label: 'Jarras', w: 26 },
+      { key: 'kg', label: 'kg', w: 28 },
+      { key: 'ratio', label: 'Ratio', w: 24 },
+      { key: 'pers', label: 'Pers.', w: tableW - 154 }
+    ];
+
+    const drawHeader = () => {
+      doc.setFillColor(20, 53, 37);
+      doc.rect(0, 0, w, 32, 'F');
+      doc.setFillColor(31, 122, 58);
+      doc.rect(0, 32, w, 1.4, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Q BERRIES', margin, 11);
+      doc.setFontSize(15);
+      doc.text('Rendimiento por encargado', margin, 19);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text('Magica · Licapa II', margin, 26);
+      doc.setFontSize(8);
+      doc.text(fechaLabel, w - margin, 14, { align: 'right' });
+      doc.text(fmtN(totalKg) + ' kg', w - margin, 20, { align: 'right' });
+    };
+
+    const drawTableHead = (y) => {
+      doc.setFillColor(31, 122, 58);
+      doc.rect(margin, y, tableW, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      let x = margin;
+      cols.forEach((col, ci) => {
+        if (ci === 1) doc.text(col.label, x + 2, y + 5.4);
+        else doc.text(col.label, x + col.w / 2, y + 5.4, { align: 'center' });
+        x += col.w;
+      });
+      return y + 8;
+    };
+
+    drawHeader();
+    let y = 42;
+
+    list.forEach((enc, ei) => {
+      if (y > usableBottom - 36) {
+        doc.addPage();
+        drawHeader();
+        y = 42;
+      }
+      doc.setFillColor(ei === 0 ? 243 : 247, ei === 0 ? 250 : 251, ei === 0 ? 245 : 248);
+      doc.setDrawColor(183, 215, 194);
+      doc.roundedRect(margin, y, tableW, 16, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(20, 53, 37);
+      doc.text(ei + 1 + '.  ' + String(enc.nombre || ''), margin + 4, y + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(31, 122, 58);
+      doc.text(fmtN(enc.kg) + ' kg', w - margin - 4, y + 7, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(90, 104, 96);
+      doc.text(
+        fmtN(enc.jarras) +
+          ' jarras   ·   ratio ' +
+          fmtN(enc.ratio) +
+          '   ·   ' +
+          (enc.equipo || []).length +
+          ' supervisores   ·   ' +
+          fmtN(enc.personas) +
+          ' cosechadores',
+        margin + 4,
+        y + 12.5
+      );
+      y += 20;
+      y = drawTableHead(y);
+      (enc.equipo || []).forEach((s, i) => {
+        if (y > usableBottom - 8) {
+          doc.addPage();
+          drawHeader();
+          y = 42;
+          y = drawTableHead(y);
+        }
+        if (i % 2 === 0) {
+          doc.setFillColor(247, 251, 248);
+          doc.rect(margin, y, tableW, 7.2, 'F');
+        }
+        const cells = [
+          String(i + 1),
+          String(s.nombre || ''),
+          fmtN(s.jarras),
+          fmtN(s.kg),
+          fmtN(s.ratio),
+          fmtN(s.personas) + ' pers.'
+        ];
+        doc.setFont('helvetica', i === 0 ? 'bold' : 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(28, 43, 34);
+        let x = margin;
+        cells.forEach((text, ci) => {
+          const shown = doc.splitTextToSize(text, cols[ci].w - 4)[0] || '';
+          if (ci === 1) doc.text(shown, x + 2, y + 4.8);
+          else doc.text(shown, x + cols[ci].w / 2, y + 4.8, { align: 'center' });
+          x += cols[ci].w;
+        });
+        y += 7.2;
+      });
+      y += 6;
+    });
+
+    this._stampConfidential(doc);
+    const filename =
+      'Encargados_Licapa_II_' + this._safeFilePart(meta && meta.fecha, 16) + '.pdf';
+    if (meta && meta.returnBlob) {
+      const ab = doc.output('arraybuffer');
+      return { blob: new Blob([ab], { type: 'application/pdf' }), filename, bytes: new Uint8Array(ab) };
+    }
     doc.save(filename);
     this.toast('PDF descargado');
     return null;

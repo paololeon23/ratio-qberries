@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="preload" as="image" href="assets/logo-qberries.png" />
-  <link rel="stylesheet" href="css/app.css?v=m455" />
+  <link rel="stylesheet" href="css/app.css?v=m518" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -29,21 +29,25 @@
     body:not(.is-ready) #installBanner,
     body:not(.is-ready) #toastHost,
     body:not(.is-ready) #syncBanner { display: none !important; }
-    body:not(.is-ready) #loadOverlay { display: grid !important; }
+    body:not(.is-ready) #loadOverlay { display: flex !important; align-items: center !important; justify-content: center !important; }
     body.is-ready #loadOverlay,
     #loadOverlay[hidden] { display: none !important; }
+    body:not(.is-ready) { overflow: hidden; }
     #loadOverlay {
-      position: fixed; inset: 0; z-index: 9999;
-      display: grid; place-items: center;
-      padding: max(1.75rem, env(safe-area-inset-top, 0px)) max(1.75rem, env(safe-area-inset-right, 0px)) max(1.75rem, env(safe-area-inset-bottom, 0px)) max(1.75rem, env(safe-area-inset-left, 0px));
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+      width: 100%; height: 100dvh; min-height: 100dvh;
+      z-index: 9999; margin: 0;
+      display: flex !important; align-items: center !important; justify-content: center !important;
+      padding: 1.25rem;
       background: linear-gradient(160deg, #f3faf1 0%, #fff8f0 55%, #ffffff 100%);
     }
     #loadOverlay .load-card {
-      width: min(92vw, 360px); text-align: center;
+      width: min(92vw, 360px); margin: 0 auto;
+      text-align: center;
       background: #fff; border-radius: 22px;
       padding: 2rem 1.85rem 1.9rem;
       box-shadow: 0 18px 48px rgba(22, 48, 31, 0.14);
-      border: 1px solid rgba(74, 184, 72, 0.18);
+      border: 0;
       display: flex; flex-direction: column; align-items: center; gap: 0.8rem;
     }
     #loadOverlay .load-spinner {
@@ -120,14 +124,14 @@
         </div>
         <div class="brand-text">
           <p class="brand-kicker">Q Berries</p>
-          <h1>Reportes</h1>
-          <p class="brand-sub">Avance de jarras · Licapa</p>
+          <h1><span class="brand-title-desk">Reportes</span><span class="brand-title-mob">Reporte de cosecha</span></h1>
+          <p class="brand-sub"><span class="brand-sub-desk">Avance de jarras · Licapa</span><span class="brand-sub-mob">Registro de campo</span></p>
         </div>
       </div>
       <div class="status-pills" aria-live="polite">
         <span id="netPill" class="status-chip is-live" title="Datos en vivo · reportes actualizados">
           <span class="status-dot" aria-hidden="true"></span>
-          <span class="status-text">EN VIVO</span>
+          <span class="status-text"><span class="status-live-desk">EN VIVO</span><span class="status-live-mob">En línea</span></span>
         </span>
         <div class="status-actions">
           <button
@@ -202,13 +206,13 @@
 
   <div class="report-panels">
     <section class="report-panel is-active" id="panelResumen" data-panel="resumen">
-      <section class="panel attn-panel" id="secAtencion" aria-label="Atención supervisora" title="Alertas urgentes del día">
+      <section class="panel attn-panel" id="secAtencion" aria-label="Seguimiento del día" title="Seguimiento del día">
         <div class="panel-head">
           <div class="panel-title">
             <span class="title-ico tone-orange" data-title-ico="bell" aria-hidden="true"></span>
             <div>
-              <h2>Atención</h2>
-              <p class="muted">Mejor y peor LIC por jarras totales · Menos personal</p>
+              <h2>Seguimiento</h2>
+              <p class="muted">LIC con más jarras · LIC con menos jarras · Equipo más pequeño</p>
             </div>
           </div>
         </div>
@@ -372,7 +376,6 @@
               <span class="title-ico tone-green" data-title-ico="bars" aria-hidden="true"></span>
               <div>
                 <h2>Ratios Cosecha / Diario</h2>
-                <p class="muted">Ratio de cosecha/día · ≤30 JARRAS · 31-40 JARRAS · 41-50 JARRAS · 51-60 JARRAS · 61-70 JARRAS · &gt;70 JARRAS</p>
               </div>
             </div>
             <div class="chart-actions">
@@ -398,7 +401,13 @@
                 </button>
               </div>
             </div>
-            <div class="ratio-sheet-chips" id="ratioSheetChips" role="group" aria-label="Elegir fechas"></div>
+            <div class="ratio-fecha-dd" id="ratioFechaDd">
+              <button type="button" class="ratio-fecha-trigger" id="ratioFechaBtn" aria-expanded="false" aria-controls="ratioSheetChips" aria-haspopup="listbox">
+                <span class="ratio-fecha-kicker">Fechas</span>
+                <span class="ratio-fecha-value" id="ratioFechaValue">Elige fechas</span>
+              </button>
+              <div class="ratio-fecha-menu" id="ratioSheetChips" role="listbox" aria-label="Elegir fechas" hidden></div>
+            </div>
             <p class="muted ratio-sheet-meta" id="ratioSheetMeta"></p>
           </div>
           <div class="chart-wrap chart-ratio" id="chartDist"></div>
@@ -460,17 +469,18 @@
         <div class="compare-sheet-bar" id="compareSheetBar">
           <div class="compare-sheet-head">
             <div>
-              <p class="compare-sheet-title">Hojas a comparar</p>
-              <p class="compare-sheet-hint">Toca <strong>×</strong> en cualquier hoja para no incluirla</p>
+              <p class="compare-sheet-title">Fechas a comparar</p>
+              <p class="compare-sheet-hint">Hasta 3 fechas, para que cargue rápido</p>
             </div>
             <button type="button" class="btn btn-primary btn-sm" id="btnCompareRun" title="Actualizar comparación">
               Comparar
             </button>
           </div>
-          <div class="compare-sheet-chips" id="compareSheetChips" role="list" aria-label="Hojas incluidas"></div>
-          <div class="compare-sheet-excluded-wrap" id="compareExcludedWrap" hidden>
-            <p class="compare-sheet-excluded-label">Excluidas · toca para volver a incluir</p>
-            <div class="compare-sheet-chips compare-sheet-chips--excluded" id="compareExcludedChips" role="list"></div>
+          <div class="ratio-fecha-dd" id="compareFechaDd">
+            <button type="button" class="ratio-fecha-trigger" id="compareFechaBtn" aria-haspopup="dialog" aria-controls="compareFechaModal">
+              <span class="ratio-fecha-kicker">Fechas</span>
+              <span class="ratio-fecha-value" id="compareFechaValue">3 fechas</span>
+            </button>
           </div>
         </div>
         <div id="compareContent" class="compare-content" aria-live="polite"></div>
@@ -478,6 +488,26 @@
     </section>
   </div>
   </div><!-- /.app-shell -->
+
+  <div class="modal-root" id="compareFechaModal" hidden>
+    <div class="modal-backdrop" data-close-compare-fechas="1"></div>
+    <div class="modal compare-fecha-modal" role="dialog" aria-modal="true" aria-labelledby="compareFechaTitle">
+      <button type="button" class="modal-close" data-close-compare-fechas="1" aria-label="Cerrar">×</button>
+      <div class="modal-head">
+        <h3 id="compareFechaTitle">Fechas a comparar</h3>
+      </div>
+      <p class="compare-fecha-lead">Elige hasta 3 fechas de la misma variedad. Con menos hojas la comparación termina antes.</p>
+      <div class="compare-fecha-tools">
+        <p class="compare-fecha-count" id="compareFechaCount">0 de 3</p>
+        <button type="button" class="btn btn-sm" id="compareFechaUltimas">Últimas 3</button>
+      </div>
+      <div class="compare-fecha-list" id="compareFechaList"></div>
+      <div class="compare-fecha-actions">
+        <button type="button" class="btn" data-close-compare-fechas="1">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="compareFechaApply">Comparar</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-root" id="selectModal" hidden>
     <div class="modal-backdrop" data-close-select="1"></div>
@@ -532,22 +562,22 @@
 
   <script defer src="vendor/echarts.min.js"></script>
   <script defer src="vendor/jspdf.umd.min.js"></script>
-  <script defer src="js/config.js?v=m455"></script>
-  <script defer src="js/workers.js?v=m455"></script>
-  <script defer src="js/plano.js?v=m455"></script>
-  <script defer src="js/api.js?v=m455"></script>
-  <script defer src="js/icons.js?v=m455"></script>
-  <script defer src="js/avatars.js?v=m455"></script>
-  <script defer src="js/jefes-dia.js?v=m455"></script>
-  <script defer src="js/supervisors.js?v=m455"></script>
-  <script defer src="js/historial-data.js?v=m455"></script>
-  <script defer src="js/historial-nombres.js?v=m455"></script>
-  <script defer src="js/historial.js?v=m455"></script>
-  <script defer src="js/descartes.js?v=m455"></script>
-  <script defer src="js/charts.js?v=m455"></script>
-  <script defer src="js/select.js?v=m455"></script>
-  <script defer src="js/export.js?v=m455"></script>
-  <script defer src="js/app.js?v=m455"></script>
+  <script defer src="js/config.js?v=m518"></script>
+  <script defer src="js/workers.js?v=m518"></script>
+  <script defer src="js/plano.js?v=m518"></script>
+  <script defer src="js/api.js?v=m518"></script>
+  <script defer src="js/icons.js?v=m518"></script>
+  <script defer src="js/avatars.js?v=m518"></script>
+  <script defer src="js/jefes-dia.js?v=m518"></script>
+  <script defer src="js/supervisors.js?v=m518"></script>
+  <script defer src="js/historial-data.js?v=m518"></script>
+  <script defer src="js/historial-nombres.js?v=m518"></script>
+  <script defer src="js/historial.js?v=m518"></script>
+  <script defer src="js/descartes.js?v=m518"></script>
+  <script defer src="js/charts.js?v=m518"></script>
+  <script defer src="js/select.js?v=m518"></script>
+  <script defer src="js/export.js?v=m518"></script>
+  <script defer src="js/app.js?v=m518"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

@@ -30,12 +30,26 @@ QB.historial = {
     const map = (window.QB && QB.historialNombres) || {};
     const d = this.normDni(dni);
     if (!d) return '';
-    if (map[d]) return map[d];
-    const pad = d.padStart(8, '0');
-    if (map[pad]) return map[pad];
-    const strip = d.replace(/^0+/, '');
-    if (strip && map[strip]) return map[strip];
+    const keys = [d, d.padStart(8, '0'), d.replace(/^0+/, '')];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k && map[k]) return map[k];
+    }
+    if (window.QB && QB.workers && QB.workers.get) {
+      const w = QB.workers.get(d);
+      if (w && w.nombreCompleto) return w.nombreCompleto;
+    }
     return '';
+  },
+
+  /** Vuelve a poner el nombre del padrón en los CI que la hoja guardó como S/N. */
+  refrescarNombres() {
+    const by = this.byDni || {};
+    Object.keys(by).forEach((dni) => {
+      const p = by[dni];
+      if (!p) return;
+      p.nombre = this.nombreLimpio(p.nombre, p.dni || dni);
+    });
   },
 
   nombreLimpio(nombre, dni) {
@@ -74,7 +88,7 @@ QB.historial = {
     const slope = den ? (n * sumXY - sumX * sumY) / den : 0;
     const bajando = slope < 0 && a2 + 3 < a1 && last < first;
     const flecha = Math.round(first) + '→' + Math.round(last);
-    const label = bajando ? 'BAJA · ' + flecha : slope > 0 && last > first ? 'SUBE · ' + flecha : 'ESTABLE · ' + flecha;
+    const label = bajando ? 'Por acompañar · ' + flecha : slope > 0 && last > first ? 'En alza · ' + flecha : 'Estable · ' + flecha;
     return { bajando: bajando, label: label, desde: first, hasta: last };
   },
 
@@ -487,7 +501,7 @@ QB.historial = {
     } else if (tend.bajando) {
       decision = 'NO APTO';
       apto = false;
-      motivo = 'Viene bajando desde el 7/09 · bajo rendimiento';
+      motivo = 'La tendencia baja desde el 7/09 · conviene acompañar';
     }
     return {
       dni: st.dni,

@@ -1,25 +1,25 @@
 /* Service worker — app usable sin internet (shell; datos siempre frescos en red) */
-const CACHE = 'qb-rendimientos-m455';
+const CACHE = 'qb-rendimientos-m518';
 const PRECACHE = [
   './',
   './index.html',
-  './css/app.css?v=m455',
-  './js/config.js?v=m455',
-  './js/workers.js?v=m455',
-  './js/plano.js?v=m455',
-  './js/api.js?v=m455',
-  './js/icons.js?v=m455',
-  './js/avatars.js?v=m455',
-  './js/jefes-dia.js?v=m455',
-  './js/supervisors.js?v=m455',
-  './js/historial-data.js?v=m455',
-  './js/historial-nombres.js?v=m455',
-  './js/historial.js?v=m455',
-  './js/descartes.js?v=m455',
-  './js/charts.js?v=m455',
-  './js/select.js?v=m455',
-  './js/export.js?v=m455',
-  './js/app.js?v=m455',
+  './css/app.css?v=m518',
+  './js/config.js?v=m518',
+  './js/workers.js?v=m518',
+  './js/plano.js?v=m518',
+  './js/api.js?v=m518',
+  './js/icons.js?v=m518',
+  './js/avatars.js?v=m518',
+  './js/jefes-dia.js?v=m518',
+  './js/supervisors.js?v=m518',
+  './js/historial-data.js?v=m518',
+  './js/historial-nombres.js?v=m518',
+  './js/historial.js?v=m518',
+  './js/descartes.js?v=m518',
+  './js/charts.js?v=m518',
+  './js/select.js?v=m518',
+  './js/export.js?v=m518',
+  './js/app.js?v=m518',
   './vendor/echarts.min.js',
   './vendor/jspdf.umd.min.js',
   './manifest.webmanifest',
@@ -28,7 +28,8 @@ const PRECACHE = [
   './assets/apple-touch-icon.png',
   './assets/logo-qberries.png',
   './assets/FONDO.jpg',
-  './data/plano-cosecha.json'
+  './data/plano-cosecha.json',
+  './data/trabajadores.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -69,17 +70,27 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('.html');
 
+  const shell = () =>
+    caches.match('./index.html').then((r) => r || caches.match('./'));
+
   if (isHtml) {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy));
-          return res;
-        })
-        .catch(() =>
-          caches.match('./index.html').then((r) => r || caches.match('./'))
-        )
+      shell().then((cached) => {
+        const offline = self.navigator && self.navigator.onLine === false;
+        if (offline && cached) return cached;
+        const net = fetch(req)
+          .then((res) => {
+            if (res && res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put('./index.html', copy));
+            }
+            return res;
+          });
+        const timed = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('timeout')), 2500);
+        });
+        return Promise.race([net, timed]).catch(() => cached || net);
+      })
     );
     return;
   }
@@ -95,7 +106,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => cached);
+        .catch(() => caches.match(req, { ignoreSearch: true }));
     })
   );
 });

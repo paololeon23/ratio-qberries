@@ -31,7 +31,11 @@ QB.avatars = {
 
   /** Nombre limpio: padrón o vacío (nunca S/N). */
   realName(row) {
-    const full = (row.nombreCompleto || '').trim();
+    let full = (row.nombreCompleto || '').trim();
+    if ((!full || this._junk(full)) && window.QB && QB.workers && QB.workers.get) {
+      const w = QB.workers.get(row.ci);
+      if (w && w.nombreCompleto && !this._junk(w.nombreCompleto)) full = w.nombreCompleto;
+    }
     if (full && !this._junk(full)) return full;
     const ape = (row.apellido || '').trim();
     const nom = (row.nombre || '').trim();

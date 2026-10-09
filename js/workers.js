@@ -4,6 +4,46 @@ window.QB = window.QB || {};
 QB.workers = {
   map: new Map(),
   ready: false,
+  _LS: 'qb_workers_nombres_v1',
+
+  /** Padrón ya guardado en el celular. Se usa al recargar, antes de volver a bajar el JSON. */
+  hydrate() {
+    try {
+      const raw = localStorage.getItem(this._LS);
+      if (!raw) return false;
+      const obj = JSON.parse(raw);
+      const map = new Map();
+      Object.keys(obj || {}).forEach((dni) => {
+        const nom = String(obj[dni] || '').trim();
+        const key = this.cleanCi(dni);
+        if (!key || !nom || this.isJunkName(nom)) return;
+        map.set(key, {
+          dni: key,
+          nombreCompleto: nom,
+          cargo: '',
+          fechaIngreso: '',
+          activo: true
+        });
+      });
+      if (!map.size) return false;
+      this.map = map;
+      this.ready = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  _persist() {
+    try {
+      const obj = {};
+      this.map.forEach((w, dni) => {
+        if (w && w.nombreCompleto && !this.isJunkName(w.nombreCompleto)) obj[dni] = w.nombreCompleto;
+      });
+      if (!Object.keys(obj).length) return;
+      localStorage.setItem(this._LS, JSON.stringify(obj));
+    } catch (_) {}
+  },
 
   /**
    * Limpia CI/DNI a dígitos; DNI PE = 8 (rellena ceros a la izquierda si Sheets los perdió).
@@ -42,7 +82,7 @@ QB.workers = {
       return this.map;
     }
     try {
-      const res = await fetch('data/trabajadores.json', { cache: 'force-cache' });
+      const res = await fetch('data/trabajadores.json');
       if (!res.ok) throw new Error('trabajadores HTTP ' + res.status);
       const list = await res.json();
       const map = new Map();
@@ -62,9 +102,10 @@ QB.workers = {
       }
       this.map = map;
       this.ready = true;
+      this._persist();
       return map;
     } catch (err) {
-      this.ready = false;
+      if (!this.map.size) this.ready = false;
       return this.map;
     }
   },
@@ -104,6 +145,22 @@ QB.workers = {
         nombre = parts[1];
       } else {
         nombre = nombreCompleto;
+      }
+    } else {
+      const keptFull = String(row.nombreCompleto || '').trim();
+      const keptApe = String(row.apellido || '').trim();
+      const keptNom = String(row.nombre || '').trim();
+      if (keptFull && !this.isJunkName(keptFull)) {
+        nombreCompleto = keptFull;
+      } else {
+        const apeOk = keptApe && !this.isJunkName(keptApe) ? keptApe : '';
+        const nomOk = keptNom && !this.isJunkName(keptNom) ? keptNom : '';
+        nombreCompleto = [apeOk, nomOk].filter(Boolean).join(' ');
+      }
+      if (nombreCompleto) {
+        apellido = keptApe && !this.isJunkName(keptApe) ? keptApe : '';
+        nombre = keptNom && !this.isJunkName(keptNom) ? keptNom : '';
+        if (!apellido && !nombre) nombre = nombreCompleto;
       }
     }
 

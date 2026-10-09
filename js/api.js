@@ -34,6 +34,7 @@ QB.api = {
         ci: r.ci,
         nombre: r.nombre,
         apellido: r.apellido,
+        nombreCompleto: r.nombreCompleto,
         grupo: r.grupo,
         variedad: r.variedad,
         huerto: r.huerto,
@@ -74,7 +75,8 @@ QB.api = {
     this._dayCachesLoaded = true;
     try {
       const idx = JSON.parse(localStorage.getItem(this._LS_INDEX) || '[]');
-      for (let i = 0; i < idx.length; i++) {
+      const start = Math.max(0, idx.length - 8);
+      for (let i = start; i < idx.length; i++) {
         const k = String(idx[i] || '').trim();
         if (!k) continue;
         const raw = localStorage.getItem(this._LS_DAY_PREFIX + k);
@@ -97,7 +99,7 @@ QB.api = {
         localStorage.setItem(this._LS_DAY_PREFIX + key, JSON.stringify(slim));
         let idx = JSON.parse(localStorage.getItem(this._LS_INDEX) || '[]');
         if (idx.indexOf(key) < 0) idx.push(key);
-        if (idx.length > 8) idx = idx.slice(-8);
+        if (idx.length > 40) idx = idx.slice(-40);
         localStorage.setItem(this._LS_INDEX, JSON.stringify(idx));
         this._storePack(key, enriched);
       }
@@ -126,13 +128,36 @@ QB.api = {
     this._initDayCaches();
     const k = String(fecha || '').trim();
     if (!k) return null;
-    const hit = this._packByFecha[k];
+    let hit = this._packByFecha[k];
+    if (!hit || !(hit.data || []).length) {
+      try {
+        const raw = localStorage.getItem(this._LS_DAY_PREFIX + k);
+        if (raw) {
+          const json = JSON.parse(raw);
+          if (json && json.ok !== false && (json.data || []).length) {
+            hit = this._enrichReport(json);
+            this._storePack(k, hit);
+          }
+        }
+      } catch (_) {}
+    }
     if (!hit || !(hit.data || []).length) return null;
     if (hit.hoy && hit.hoy !== k) return null;
     return hit;
   },
 
+  _pausarRed() {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    this._redPausaHasta = Date.now() + (offline ? 20000 : 10 * 60 * 1000);
+  },
+
+  _redPausada() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    return !!(this._redPausaHasta && Date.now() < this._redPausaHasta);
+  },
+
   prefetchFechas(hojas, skipFecha) {
+    if (this._redPausada()) return;
     const skip = String(skipFecha || '').trim();
     const pending = [];
     (hojas || []).forEach((h) => {
@@ -144,9 +169,13 @@ QB.api = {
     if (!pending.length) return;
     /* Una fecha a la vez · Apps Script se ahoga si pedimos todas juntas */
     this._prefetchQueue = this._prefetchQueue || Promise.resolve();
+    const self = this;
     pending.forEach((f) => {
       this._prefetchQueue = this._prefetchQueue
-        .then(() => this.cargarTodo({ fecha: f, background: true, allowCacheFallback: true }))
+        .then(function () {
+          if (self._redPausada()) return;
+          return self.cargarTodo({ fecha: f, background: true, allowCacheFallback: true });
+        })
         .catch(function () {});
     });
   },
@@ -170,8 +199,20 @@ QB.api = {
     return this._lastPack;
   },
 
-  async _get(url) {
-    const res = await fetch(url, { cache: 'no-store', redirect: 'follow' });
+  async _get(url, opts) {
+    opts = opts || {};
+    if (!opts.forzar && this._redPausada()) throw new Error('Sin red');
+    const ms = Number(opts.timeoutMs) || 20000;
+    const ctrl = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+      ? { signal: AbortSignal.timeout(ms) }
+      : {};
+    let res;
+    try {
+      res = await fetch(url, Object.assign({ cache: 'no-store', redirect: 'follow' }, ctrl));
+    } catch (err) {
+      this._pausarRed();
+      throw err;
+    }
     const text = await res.text();
     if (!res.ok) throw new Error('HTTP ' + res.status);
     try {
@@ -213,6 +254,13 @@ QB.api = {
     const prevVer = this._dataVersion || this._versionOf(this._lastPack);
     const fallback = this.getCachedPack();
     const fecha = String(opts.fecha || '').trim();
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (fallback && (fallback.data || []).length) {
+        return { pack: fallback, changed: false, fromCache: true, error: 'offline' };
+      }
+      throw new Error('Sin red');
+    }
+    this._redPausaHasta = 0;
 
     try {
       const pack = await this.cargarTodo({
@@ -247,7 +295,10 @@ QB.api = {
 
     this._inflightMap[key] = (async () => {
       try {
-        const json = await this._get(url);
+        const json = await this._get(url, {
+          forzar: !!(opts.force || opts.forzarRed),
+          timeoutMs: opts.forzarRed || opts.force ? 50000 : 20000
+        });
         if (!json || json.ok === false) throw new Error((json && json.error) || 'API error');
 
         const n = (json.data && json.data.length) || 0;
@@ -281,9 +332,14 @@ QB.api = {
 
         return pack;
       } catch (err) {
+        this._pausarRed();
         if (opts.allowCacheFallback !== false) {
-          const cached = this.getPackForFecha(fecha) || this.getCachedPack();
-          if (cached) return cached;
+          const exact = fecha ? this.getPackForFecha(fecha) : null;
+          if (exact) return exact;
+          if (!fecha) {
+            const cached = this.getCachedPack();
+            if (cached) return cached;
+          }
         }
         throw err;
       } finally {
@@ -304,6 +360,7 @@ QB.api = {
 
     const fecha = String(opts.fecha || '').trim();
     this._initDayCaches();
+    if (opts.forzarRed || opts.force) this._redPausaHasta = 0;
 
     const instant = !opts.force && this.getPackForFecha(fecha);
     if (instant && (instant.data || []).length) {
@@ -352,29 +409,110 @@ QB.api = {
     return r.pack;
   },
 
+  _hojaConDatos(h) {
+    return Number(h && h.filas) > 0 && !!(h && h.fecha);
+  },
+
+  _localHojaKeys() {
+    this._initDayCaches();
+    const keys = {};
+    const hojas = (this._lastPack && this._lastPack.hojas) || [];
+    hojas.forEach((h) => {
+      if (h && h.fecha) keys[h.fecha] = 1;
+    });
+    try {
+      const idx = JSON.parse(localStorage.getItem(this._LS_INDEX) || '[]');
+      idx.forEach((k) => {
+        if (k) keys[k] = 1;
+      });
+    } catch (_) {}
+    return keys;
+  },
+
+  async _meta() {
+    const url = QB.config.apiBase + '?action=meta&t=' + Date.now();
+    const json = await this._get(url);
+    if (!json || json.ok === false) throw new Error((json && json.error) || 'meta');
+    return json;
+  },
+
+  /** Hojas del API que no están en local, de la más nueva hacia atrás, solo con filas. */
+  _hojasNuevas(remote) {
+    const local = this._localHojaKeys();
+    const nuevas = [];
+    for (let i = 0; i < remote.length; i++) {
+      const f = remote[i] && remote[i].fecha;
+      if (!f) continue;
+      if (local[f]) break;
+      nuevas.push(remote[i]);
+    }
+    return nuevas;
+  },
+
   startDataWatch() {
     if (!QB.config.apiBase || this._pollTimer) return;
-    this._pollTimer = setInterval(async () => {
+    if (!this._onlineBound && typeof window !== 'undefined') {
+      this._onlineBound = true;
+      window.addEventListener('online', () => {
+        this._redPausaHasta = 0;
+      });
+    }
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (this._redPausada()) return;
       try {
-        const active =
-          (window.QB && QB.appFecha && QB.appFecha()) || '';
-        const latest = (this._lastPack && this._lastPack.hoy) || '';
-        if (active && latest && active !== latest) return;
-        const r = await this.refresh({ fecha: '' });
-        if (r.changed && !r.fromCache) {
+        const active = (window.QB && QB.appFecha && String(QB.appFecha() || '')) || '';
+        const latestBefore = (this._lastPack && this._lastPack.hoy) || '';
+        const meta = await this._meta();
+        const remote = ((meta && meta.hojas) || []).filter((h) => this._hojaConDatos(h));
+        if (!remote.length) {
+          window.dispatchEvent(new CustomEvent('qb:data-tick', { detail: this._lastPack || {} }));
+          return;
+        }
+        const nuevas = this._hojasNuevas(remote);
+        const latestKey = String(remote[0].fecha || '').trim();
+        let pack = null;
+        const traer = nuevas.slice().reverse();
+        for (let i = 0; i < traer.length; i++) {
+          const got = await this._fetchTodo(traer[i].fecha, { force: true, background: true });
+          const gotHoy = String((got && got.hoy) || '').trim();
+          if (got && !got._keptCache && gotHoy === traer[i].fecha && (got.data || []).length) pack = got;
+        }
+        let changedLatest = false;
+        if (!nuevas.length && latestKey) {
+          const r = await this.refresh({ fecha: latestKey });
+          if (r && r.pack && (r.pack.data || []).length && !r.error) {
+            pack = r.pack;
+            changedLatest = !!r.changed;
+          }
+        }
+        if (pack) pack.hojas = remote;
+        else if (this._lastPack) this._lastPack.hojas = remote;
+        const shown = pack || this._lastPack;
+        const newHoy = String((pack && pack.hoy) || latestKey || '').trim();
+        const wasOnLatest = !active || active === latestBefore || active === newHoy;
+        const hojaNueva = nuevas.length > 0 && !!(pack && (pack.data || []).length);
+        if (shown && (hojaNueva || (changedLatest && wasOnLatest))) {
           window.dispatchEvent(
             new CustomEvent('qb:data-updated', {
               detail: {
-                syncedAt: r.pack.actualizado || '',
-                rows: r.pack.count || 0,
-                hoy: r.pack.hoy || '',
-                pack: r.pack
+                syncedAt: (shown && shown.actualizado) || '',
+                rows: (pack && (pack.data || []).length) || 0,
+                hoy: newHoy,
+                pack: pack || shown,
+                promote: wasOnLatest && !!(pack && (pack.data || []).length),
+                hojaNueva: hojaNueva
               }
             })
           );
         }
-        window.dispatchEvent(new CustomEvent('qb:data-tick', { detail: r.pack }));
+        window.dispatchEvent(new CustomEvent('qb:data-tick', { detail: shown || {} }));
       } catch (_) {}
-    }, 60000);
+    };
+    this._pollTimer = setInterval(tick, 20000);
+    setTimeout(tick, 4000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) tick();
+    });
   }
 };

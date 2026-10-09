@@ -4,8 +4,9 @@
   const COMPARE_LT40 = 30;
   /** Umbral alto: 58 jarras o más */
   const COMPARE_GTE58 = 58;
-  /** 1 jarra = 1.15 kg (factor por defecto) */
+  /** Sekoya y el resto: 1 jarra = 1.15 kg. Magica: kg netos ÷ jarras del día (52,409.6 / 47,190). */
   const JARRA_A_KG = 1.15;
+  const KG_MAGICA = 52409.6 / 47190;
   const KG_FACTORS = [1.1, 1.12, 1.14];
   let kgFactor = JARRA_A_KG;
   /** SHA-256 del acceso autorizado · nunca la clave en texto */
@@ -35,6 +36,7 @@
     allVariedades: [],
     fechaOpts: [],
     compareExcluded: {},
+    compareFechaCustom: false,
     comparePacks: {},
     compareLt40Q: '',
     _compareDirty: true,
@@ -168,6 +170,9 @@
     bind();
     updateConnBadge();
 
+    /* Padrón y día ya guardados. Sin red la pantalla no espera al JSON ni a Google. */
+    if (QB.workers && QB.workers.hydrate) QB.workers.hydrate();
+
     /* Caché al toque (ya la tenemos). Última hoja se pide atrás, sin bloquear. */
     const cached = QB.api.getCachedPack ? QB.api.getCachedPack() : null;
     const cachedHoy = String((cached && cached.hoy) || '').trim();
@@ -180,6 +185,12 @@
     ]).then(function () {
       if (QB.supervisors && QB.supervisors.enrichFromWorkers) {
         QB.supervisors.enrichFromWorkers();
+      }
+      if (QB.historial && QB.historial.refrescarNombres) QB.historial.refrescarNombres();
+      if (state.tab === 'historial') {
+        const filtro = $('historialFiltro');
+        paintHistorialList(filtro ? filtro.value : '');
+        if (state.historialDni) renderHistorialResult(state.historialDni);
       }
       const p = state.report || (QB.api.getCachedPack && QB.api.getCachedPack());
       if (p && (p.data || []).length) {
@@ -196,8 +207,12 @@
       applyPack(cached, { skipPrefetch: true, requestedFecha: cachedHoy, force: true });
       painted = true;
       revealApp();
-      /* El día ya está en pantalla. El refresco de la API sigue atrás, sin dejar la barra en 90%. */
       hideSyncBanner();
+      /* Las otras hojas se piden solo si la primera llamada a Google respondió. */
+    } else if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      revealApp();
+      hideSyncBanner();
+      QB.export.toast('Sin red · abre la app una vez con internet para guardar el día', 'warn');
     } else {
       document.body.classList.remove('is-ready');
       showLoadModal('Cargando', 'Última hoja de cosecha…');
@@ -211,10 +226,36 @@
         const detail = (e && e.detail) || {};
         const p = detail.pack || QB.api.getCachedPack();
         if (!p || !(p.data || []).length) return;
-        applyPack(p, { requestedFecha: state.fecha || '' });
+        if (detail.promote === false) {
+          if (p.hojas && p.hojas.length) {
+            state.hojas = p.hojas;
+            state.fechaOpts = (p.hojas || [])
+              .filter((h) => h.fecha)
+              .map((h) => {
+                const iso = h.fechaDisplay || h.fecha;
+                const info = fmtFechaClara(iso);
+                return {
+                  value: h.fecha,
+                  display: iso,
+                  label: info.fullLong || info.full,
+                  sub: h.filas ? h.filas + ' filas' : '',
+                  filas: h.filas
+                };
+              });
+            syncCompareFechaOpts();
+            syncRatioFechaOpts();
+          }
+          QB.export.toast('Hay una hoja nueva · ábrela en la fecha', 'ok');
+          return;
+        }
+        applyPack(p, { requestedFecha: String(p.hoy || '').trim(), force: true });
         flashHero();
         hideSyncBanner();
-        QB.export.toast('Se actualizó · ' + ((p.data && p.data.length) || 0) + ' personas', 'ok');
+        const n = (p.data && p.data.length) || 0;
+        QB.export.toast(
+          detail.hojaNueva ? 'Hoja nueva · ' + n + ' personas' : 'Se actualizó · ' + n + ' personas',
+          'ok'
+        );
       });
       window.addEventListener('qb:data-tick', (e) => {
         const detail = (e && e.detail) || {};
@@ -257,18 +298,21 @@
           sameDay &&
           QB.api._versionOf &&
           QB.api._versionOf(cached) === QB.api._versionOf(pack);
-        if (!sameVer) {
+        const cacheNamed = (cached && cached.data || []).some(function (row) {
+          return row && row.nombreCompleto;
+        });
+        if (!sameVer || !cacheNamed) {
           applyPack(pack, { skipPrefetch: true, requestedFecha: latest, force: true });
         }
         painted = true;
       }
-      if (QB.api.prefetchFechas && pack && pack.hojas) {
+      if (QB.api.prefetchFechas && pack && pack.hojas && !r.error) {
         QB.api.prefetchFechas(pack.hojas, latest);
       }
       revealApp();
       hideSyncBanner();
       const n = (pack && pack.data && pack.data.length) || 0;
-      if (r.error && painted) {
+      if (r.error === 'offline' && painted) {
         QB.export.toast('Sin red · última hoja en caché', 'warn');
       } else if (n && (!cachedHoy || cachedHoy !== latest)) {
         var hojaNom = pack.ultimaHoja || ((pack.hojas || []).find(function (h) { return h.fecha === latest; }) || {}).nombre || '';
@@ -364,35 +408,38 @@
     el.setAttribute('aria-busy', 'true');
     if (bar) bar.hidden = false;
 
+    const msgs = opts.msgs || SYNC_PROGRESS_MSGS;
+    const fast = !!opts.fast;
     _syncProg.active = true;
-    _syncProg.pct = 3;
+    _syncProg.pct = fast ? 12 : 3;
     _syncProg.msgIdx = 0;
-    setSyncProgressUi(
-      3,
-      opts.startText || SYNC_PROGRESS_MSGS[0] + ' Aún puedes usar la app.'
-    );
+    setSyncProgressUi(fast ? 12 : 3, opts.startText || msgs[0] + ' Aún puedes usar la app.');
 
     const tick = () => {
       if (!_syncProg.active) return;
       const cur = _syncProg.pct;
       let step;
-      if (cur < 25) step = 6 + Math.random() * 5;
+      if (fast) {
+        if (cur < 40) step = 14;
+        else if (cur < 70) step = 8;
+        else step = 2;
+      } else if (cur < 25) step = 6 + Math.random() * 5;
       else if (cur < 55) step = 3.5 + Math.random() * 3;
       else if (cur < 78) step = 1.6 + Math.random() * 1.4;
       else step = 0.35 + Math.random() * 0.4;
-      _syncProg.pct = Math.min(90, cur + step);
-      const msg = SYNC_PROGRESS_MSGS[Math.min(_syncProg.msgIdx, SYNC_PROGRESS_MSGS.length - 1)];
-      setSyncProgressUi(_syncProg.pct, msg + ' Aún puedes usar la app.');
-      const delay = cur < 40 ? 90 : cur < 70 ? 140 : 200;
+      _syncProg.pct = Math.min(fast ? 92 : 90, cur + step);
+      const msg = msgs[Math.min(_syncProg.msgIdx, msgs.length - 1)];
+      setSyncProgressUi(_syncProg.pct, msg);
+      const delay = fast ? 70 : cur < 40 ? 90 : cur < 70 ? 140 : 200;
       _syncProg.timer = window.setTimeout(tick, delay);
     };
 
     _syncProg.msgTimer = window.setInterval(() => {
       if (!_syncProg.active) return;
-      if (_syncProg.msgIdx < SYNC_PROGRESS_MSGS.length - 1) _syncProg.msgIdx += 1;
-    }, 700);
+      if (_syncProg.msgIdx < msgs.length - 1) _syncProg.msgIdx += 1;
+    }, fast ? 280 : 700);
 
-    _syncProg.timer = window.setTimeout(tick, 50);
+    _syncProg.timer = window.setTimeout(tick, fast ? 30 : 50);
   }
 
   function finishSyncProgress(doneText) {
@@ -480,7 +527,7 @@
     const requestedEarly = opts.requestedFecha ? String(opts.requestedFecha).trim() : '';
     const packFechaEarly = String(pack.hoy || '').trim();
     if (requestedEarly && packFechaEarly && requestedEarly !== packFechaEarly) return;
-    if (QB.workers && QB.workers.ready && QB.api && QB.api._enrichReport) {
+    if (QB.workers && QB.workers.map && QB.workers.map.size && QB.api && QB.api._enrichReport) {
       pack = QB.api._enrichReport(pack);
     }
     const counted = countUniqueWorkers(pack);
@@ -553,13 +600,21 @@
     /* Pintar todo con el pack del día activo · el historial modal no se toca */
     const histOpen = isHistorialModalOpen();
     renderHero(pack);
-    renderPeople(pack);
-    renderGrupoMap(pack);
-    state._gruposDirty = false;
-    paintActiveTabHeavy();
-    if (state._chartsTimer) clearTimeout(state._chartsTimer);
-    scheduleCharts(pack);
-    if (!histOpen) setTab(state.tab);
+    const paintRest = () => {
+      renderPeople(pack);
+      renderGrupoMap(pack);
+      state._gruposDirty = false;
+      paintActiveTabHeavy();
+      if (state._chartsTimer) clearTimeout(state._chartsTimer);
+      scheduleCharts(pack);
+      if (!histOpen) setTab(state.tab);
+    };
+    if (opts.fastFecha) {
+      if (state._fechaPaintTimer) clearTimeout(state._fechaPaintTimer);
+      state._fechaPaintTimer = setTimeout(paintRest, 0);
+    } else {
+      paintRest();
+    }
     updateConnBadge();
     notifyHistorialFechasNuevas();
     if (histOpen) refreshHistorialFechaAlert();
@@ -676,13 +731,15 @@
         e.stopPropagation();
         const next = Number(kgBtn.getAttribute('data-kg-factor'));
         if (!next) return;
-        kgFactor = next;
+        kgFactor = esDiaMagica() ? KG_MAGICA : next;
         const jarras = Number(kgBtn.getAttribute('data-jarras')) || 0;
         const kgEl = document.getElementById('heroKgValue');
         const kgMobile = document.querySelector('.hero-banner-mobile-only .value-kg');
         const kgTxt = fmt(jarras * kgFactor);
         if (kgEl) kgEl.textContent = kgTxt;
         if (kgMobile) kgMobile.textContent = kgTxt;
+        const kgNoteFactor = document.querySelector('.hero-banner-mobile-only .metric-kg-factor');
+        if (kgNoteFactor) kgNoteFactor.textContent = '× ' + fmtFactorKg(factorKgDia());
         kgBtn
           .closest('.hero-kg-factors')
           ?.querySelectorAll('[data-kg-factor]')
@@ -852,7 +909,249 @@
     };
   }
 
+  /** Encargados Magica · solo Licapa II. El nombre amarillo manda el equipo. */
+  const ENCARGADOS_LICAPA_II = [
+    {
+      nombre: 'JHON TINEO',
+      equipo: [
+        'PONCE RUIZ',
+        'LOPEZ ALFARO',
+        'VERGARA DAVILA',
+        'VALVERDE REYES',
+        'NAVARRO MANTILLA',
+        'SIFUENTES VIDAL',
+        'NORIEGA PONTE',
+        'LLAQUE ARGOMEDO',
+        'VASQUEZ VALQUI'
+      ]
+    },
+    {
+      nombre: 'JAVIER PONCE',
+      equipo: [
+        'HUARIPATA RAMIREZ',
+        'MIRANDA CULQUE',
+        'ABANTO CUEVA',
+        'VILLANUEVA FLORES',
+        'YAHUARCANI MANIHUARI',
+        'VEGA ULLOA',
+        'TRUJILLO MENDOZA',
+        'MALCA VALERIANO',
+        'VARGAS DIAZ'
+      ]
+    }
+  ];
+
+  function normEncargadoNombre(s) {
+    return String(s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function factorKgDia() {
+    if (esDiaMagica()) return KG_MAGICA;
+    if (!KG_FACTORS.includes(kgFactor)) return JARRA_A_KG;
+    return kgFactor;
+  }
+
+  function fmtFactorKg(f) {
+    const n = Number(f);
+    if (!Number.isFinite(n)) return '—';
+    const dec = Math.abs(n - KG_MAGICA) < 0.0001 ? 4 : 2;
+    return n.toLocaleString('es-PE', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  }
+
+  function esDiaMagica() {
+    const label = variedadKey(variedadLabelForFecha(state.fecha));
+    if (label.indexOf('magic') >= 0) return true;
+    return ((state.report && state.report.data) || []).some((r) =>
+      /magic/i.test(String((r && r.variedad) || ''))
+    );
+  }
+
+  function filasLicapaII(report) {
+    return ((report && report.data) || []).filter((r) => {
+      const h = String((r && r.huerto) || '').toLowerCase();
+      const v = String((r && r.variedad) || '').toLowerCase();
+      if (v && v.indexOf('magic') < 0) return false;
+      return /licapa\s*(ii|2)\b/.test(h) && !/licapa\s*(iii|3)\b/.test(h);
+    });
+  }
+
+  function encargadoDeSupervisor(nombre) {
+    const n = normEncargadoNombre(nombre);
+    if (!n) return '';
+    for (let i = 0; i < ENCARGADOS_LICAPA_II.length; i++) {
+      const enc = ENCARGADOS_LICAPA_II[i];
+      for (let j = 0; j < enc.equipo.length; j++) {
+        if (n.indexOf(enc.equipo[j]) >= 0) return enc.nombre;
+      }
+    }
+    return '';
+  }
+
+  function buildEncargadosLicapaII() {
+    const rows = filasLicapaII(state.report);
+    const stats =
+      QB.charts && QB.charts.buildGrupoStats ? QB.charts.buildGrupoStats(rows) : [];
+    const supervisores =
+      QB.charts && QB.charts.buildSupervisorStats
+        ? QB.charts.buildSupervisorStats(stats)
+        : [];
+    const byName = {};
+    ENCARGADOS_LICAPA_II.forEach((enc) => {
+      byName[enc.nombre] = {
+        nombre: enc.nombre,
+        jarras: 0,
+        personas: 0,
+        equipo: []
+      };
+    });
+    const sueltos = [];
+    supervisores.forEach((s) => {
+      const kg = (Number(s.c) || 0) * factorKgDia();
+      const item = {
+        nombre: s.nombre,
+        lic: s.lic,
+        jarras: Number(s.c) || 0,
+        kg,
+        ratio: Number(s.avg) || 0,
+        personas: Number(s.n) || 0
+      };
+      const jefe = encargadoDeSupervisor(s.nombre);
+      if (jefe && byName[jefe]) byName[jefe].equipo.push(item);
+      else sueltos.push(item);
+    });
+    const list = ENCARGADOS_LICAPA_II.map((enc) => byName[enc.nombre]);
+    if (sueltos.length) {
+      list.push({ nombre: 'SIN ENCARGADO', jarras: 0, personas: 0, equipo: sueltos });
+    }
+    list.forEach((enc) => {
+      enc.equipo.sort((a, b) => b.kg - a.kg || b.jarras - a.jarras);
+      enc.jarras = enc.equipo.reduce((sum, s) => sum + s.jarras, 0);
+      enc.personas = enc.equipo.reduce((sum, s) => sum + s.personas, 0);
+      enc.kg = enc.jarras * factorKgDia();
+      enc.ratio = enc.personas ? Math.round((enc.jarras / enc.personas) * 100) / 100 : 0;
+    });
+    list.sort((a, b) => b.kg - a.kg || b.jarras - a.jarras);
+    return list;
+  }
+
+  function fmtKgEnc(n) {
+    return Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 1 });
+  }
+
+  function openEncargadosModal() {
+    const fecha = state.fecha ? fechaLabelText(state.fecha) : 'Sin fecha';
+    const list = buildEncargadosLicapaII();
+    const totalKg = list.reduce((sum, enc) => sum + enc.kg, 0);
+    const cards = list
+      .map((enc, i) => {
+        const share = totalKg > 0 ? Math.round((enc.kg / totalKg) * 1000) / 10 : 0;
+        const personIco = QB.icons && QB.icons.personSoft ? QB.icons.personSoft(13) : '';
+        const rows = enc.equipo.length
+          ? enc.equipo
+              .map((s, idx) => {
+                return (
+                  '<tr>' +
+                  '<td>' + (idx + 1) + '</td>' +
+                  '<td class="enc-name"><strong>' + escapeHtml(s.nombre) + '</strong>' +
+                  '<span class="enc-lic">' + escapeHtml(s.lic || '') + '</span></td>' +
+                  '<td>' + fmt(s.jarras) + '</td>' +
+                  '<td class="enc-kg-cell">' + fmtKgEnc(s.kg) + '</td>' +
+                  '<td class="enc-ratio">' + fmtKgEnc(s.ratio) + '</td>' +
+                  '<td class="enc-pers">' + personIco + '<span>' + fmt(s.personas) + ' pers.</span></td>' +
+                  '</tr>'
+                );
+              })
+              .join('')
+          : '<tr><td colspan="6" class="enc-empty">Sin producción en Licapa II</td></tr>';
+        return (
+          '<article class="enc-card' + (i === 0 ? ' is-lead' : '') + '">' +
+          '<header class="enc-card-head">' +
+          '<span class="enc-place">' + (i + 1) + '</span>' +
+          '<div class="enc-id">' +
+          '<h4>' + escapeHtml(enc.nombre) + '</h4>' +
+          '<p>' + enc.equipo.length + ' supervisores · ' + fmt(enc.personas) + ' cosechadores</p>' +
+          '</div>' +
+          '<div class="enc-total">' +
+          '<strong>' + fmtKgEnc(enc.kg) + '</strong>' +
+          '<span>kg</span>' +
+          '</div>' +
+          '</header>' +
+          '<div class="enc-meta">' +
+          '<span>' + fmt(enc.jarras) + ' jarras</span>' +
+          '<span>Ratio ' + fmtKgEnc(enc.ratio) + '</span>' +
+          '<span>' + fmtKgEnc(share) + '% del kg</span>' +
+          '</div>' +
+          '<div class="enc-bar" aria-hidden="true"><span style="width:' + Math.max(0, Math.min(100, share)) + '%"></span></div>' +
+          '<div class="enc-table-wrap">' +
+          '<table class="enc-table">' +
+          '<thead><tr>' +
+          '<th>#</th>' +
+          '<th>Supervisor</th>' +
+          '<th>Jarras</th>' +
+          '<th>kg</th>' +
+          '<th>Ratio</th>' +
+          '<th class="enc-pers-h" title="Cosechadores">' +
+          (QB.icons && QB.icons.personSoft ? QB.icons.personSoft(14) : '') +
+          '</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+          '</table></div></article>'
+        );
+      })
+      .join('');
+
+    closeFechaMenu();
+    $('modalBody').innerHTML =
+      '<header class="sheet-head enc-head">' +
+      '<div class="enc-head-top">' +
+      '<div class="enc-head-copy">' +
+      '<p class="sheet-eyebrow">Magica · Licapa II</p>' +
+      '<h3 id="modalTitle">Rendimiento por encargado</h3>' +
+      '</div>' +
+      '<button type="button" class="enc-pdf-btn" id="btnPdfEncargados" title="Descargar PDF de encargados">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7.2L19 8.2V20a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5H7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 3.8V8h4.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.2 13.2h7.6M8.2 16.2h5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>' +
+      '<span>Exportar PDF</span>' +
+      '</button>' +
+      '</div>' +
+      '<p class="sheet-sub">' + escapeHtml(fecha) + ' · ' + fmtKgEnc(totalKg) + ' kg en total</p>' +
+      '</header>' +
+      '<div class="enc-board">' + cards + '</div>' +
+      '<div class="sheet-foot sheet-foot-row">' +
+      '<button type="button" class="btn btn-ghost" data-close="1">Cerrar</button>' +
+      '</div>';
+
+    const root = $('modalRoot');
+    const modal = root && root.querySelector('.modal');
+    if (modal) {
+      modal.classList.remove('is-sheet', 'is-warn-modal', 'is-stat-tip-modal');
+      modal.classList.add('is-encargado-modal');
+    }
+    root.hidden = false;
+
+    const pdfBtn = $('btnPdfEncargados');
+    if (pdfBtn) {
+      pdfBtn.addEventListener('click', () => {
+        if (!QB.export || !QB.export.encargadosPdf) return;
+        QB.export.encargadosPdf({
+          fecha: state.fecha || '',
+          fechaLabel: fecha,
+          totalKg: totalKg,
+          encargados: list
+        });
+      });
+    }
+  }
+
   function openStatTipModal(kind) {
+    if (kind === 'people' && esDiaMagica()) {
+      openEncargadosModal();
+      return;
+    }
     const tip = buildStatTipModal(kind);
     if (!tip) return;
     closeFechaMenu();
@@ -876,7 +1175,7 @@
     const root = $('modalRoot');
     const modal = root && root.querySelector('.modal');
     if (modal) {
-      modal.classList.remove('is-sheet', 'is-warn-modal');
+      modal.classList.remove('is-sheet', 'is-warn-modal', 'is-encargado-modal');
       modal.classList.add('is-stat-tip-modal');
     }
     root.hidden = false;
@@ -890,70 +1189,84 @@
     }
   }
 
+  let _fechaReq = 0;
+
+  function paintFechaChoice(want) {
+    const info = fechaInfoFor(want) || fmtFechaClara(want);
+    const longEl = document.querySelector('#fechaDd .fecha-dd-value-long');
+    const shortEl = document.querySelector('#fechaDd .fecha-dd-value-short');
+    if (longEl) longEl.textContent = info.fullLong || info.full || '';
+    if (shortEl) shortEl.textContent = info.full || info.short || '';
+    document.querySelectorAll('.fecha-dd-opt').forEach((btn) => {
+      const on = btn.getAttribute('data-value') === want;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('.hero-banner-eyebrow, .hero-side-kicker').forEach((el) => {
+      el.textContent = (info.full || info.short || '') + ' · LICAPA';
+    });
+  }
+
+  function markFechaWait(on) {
+    document.querySelectorAll('.metric-panel-main, .hero-side-total').forEach((el) => {
+      el.classList.toggle('is-fecha-wait', !!on);
+    });
+  }
+
   async function changeFecha(nextFecha) {
     const want = String(nextFecha || '').trim();
     if (!want || want === state.fecha) return;
     closeFechaMenu();
     const prev = state.fecha;
     const label = fechaLabelText(want);
-    const fechaRoot = document.getElementById('fechaDd');
-    const fechaBtn = document.getElementById('fechaDdBtn');
-    const setBusy = (on) => {
-      if (fechaRoot) fechaRoot.classList.toggle('is-busy', !!on);
-      if (fechaBtn) {
-        fechaBtn.setAttribute('aria-busy', on ? 'true' : 'false');
-        fechaBtn.disabled = !!on;
-      }
-    };
+    const mine = ++_fechaReq;
+    paintFechaChoice(want);
 
-    setBusy(true);
-
-    const finishOk = (pack, fromCache, wantFecha) => {
-      setBusy(false);
+    const showReady = (pack) => {
+      if (mine !== _fechaReq) return;
       hideSyncBanner();
-      if (wantFecha && pack.hoy && pack.hoy !== wantFecha) {
-        QB.export.toast('Aviso: datos recibidos para otra fecha; recalculando…', 'warn');
-      }
-      applyPack(pack, { requestedFecha: want });
+      applyPack(pack, { requestedFecha: want, fastFecha: true, skipPrefetch: true });
       flashHero();
-      const n = (pack.data && pack.data.length) || 0;
-      const msg = fromCache
-        ? 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas (cache)'
-        : 'Fecha lista · ' + label + ' · ' + fmt(n) + ' personas';
-      QB.export.toast(msg, 'ok');
     };
 
-    const finishFail = (msg) => {
-      setBusy(false);
-      state.fecha = prev;
-      renderHero(state.report || { kpis: {} });
-      finishSyncProgress(msg || 'No se pudo cambiar la fecha');
-      QB.export.toast(msg || 'No se pudo cambiar la fecha', 'warn');
-    };
+    const instant = QB.api.getPackForFecha(want);
+    if (instant && (instant.data || []).length) {
+      markFechaWait(false);
+      showReady(instant);
+      return;
+    }
+
+    markFechaWait(true);
+    startSyncProgress({
+      fast: true,
+      startText: 'Abriendo ' + label + '…',
+      msgs: ['Abriendo ' + label + '…', 'Leyendo jarras…', 'Armando el día…', 'Ya casi…']
+    });
 
     try {
-      const instant = QB.api.getPackForFecha(want);
-      if (instant && (instant.data || []).length) {
-        finishOk(instant, true, want);
-        return;
-      }
-
-      startSyncProgress({
-        startText: 'Cargando ' + label + '… Aún puedes usar la app.'
-      });
-
       const pack = await QB.api.cargarTodo({
         fecha: want,
         allowCacheFallback: true,
-        force: true
+        forzarRed: true
       });
+      if (mine !== _fechaReq) return;
       if (pack && (pack.data || []).length) {
-        finishOk(pack, false, want);
+        finishSyncProgress('Listo · ' + label);
+        showReady(pack);
       } else {
-        finishFail('Sin datos para ' + label);
+        state.fecha = prev;
+        paintFechaChoice(prev);
+        markFechaWait(false);
+        finishSyncProgress('Sin datos para ' + label);
+        QB.export.toast('Sin datos para ' + label, 'warn');
       }
     } catch (err) {
-      finishFail('No se pudo cargar ' + label);
+      if (mine !== _fechaReq) return;
+      state.fecha = prev;
+      paintFechaChoice(prev);
+      renderHero(state.report || { kpis: {} });
+      finishSyncProgress('No se pudo abrir ' + label);
+      QB.export.toast('No se pudo abrir ' + label, 'warn');
     }
   }
 
@@ -1000,6 +1313,7 @@
     Object.keys(state.comparePacks).forEach((f) => {
       if (!known[f]) delete state.comparePacks[f];
     });
+    capCompareFechas();
     renderCompareSheetBar();
     updateCompareMeta();
   }
@@ -1058,6 +1372,24 @@
     meta.textContent = fechas.length + ' de ' + total + ' · ' + labels.join(' · ');
   }
 
+  function placeFechaMenu(root) {
+    if (!root) return;
+    const btn = root.querySelector('.ratio-fecha-trigger');
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 88;
+    root.classList.toggle('is-up', below < 160);
+  }
+
+  function closeRatioFechaMenu() {
+    const root = $('ratioFechaDd');
+    const btn = $('ratioFechaBtn');
+    const menu = $('ratioSheetChips');
+    if (root) root.classList.remove('is-open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (menu) menu.hidden = true;
+  }
+
   function renderRatioSheetBar() {
     const host = $('ratioSheetChips');
     if (!host) return;
@@ -1068,26 +1400,46 @@
     if (btnSolo) btnSolo.classList.toggle('is-active', state.ratioMode === 'solo');
     if (btnTodas) btnTodas.classList.toggle('is-active', state.ratioMode === 'todas');
 
+    const fechasOn = getRatioFechas();
+    const valueEl = $('ratioFechaValue');
+    if (valueEl) {
+      if (!opts.length) valueEl.textContent = 'Sin fechas';
+      else if (state.ratioMode === 'todas') valueEl.textContent = 'Todas · ' + opts.length + ' fechas';
+      else if (fechasOn.length <= 1) {
+        const one = opts.find((o) => o.value === fechasOn[0]) || opts[0];
+        const info = one ? fmtFechaClara(one.display || one.value) : null;
+        valueEl.textContent = (info && (info.short || info.full)) || 'Elige fechas';
+      } else valueEl.textContent = fechasOn.length + ' fechas';
+    }
+    const root = $('ratioFechaDd');
+    const open = !!(root && root.classList.contains('is-open'));
+    const btnFecha = $('ratioFechaBtn');
+    if (btnFecha) btnFecha.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+    host.hidden = !open;
     host.innerHTML = opts.length
       ? opts
           .map((o) => {
             const info = fmtFechaClara(o.display || o.value);
             const short = info.short || o.label;
             const on = active.has(o.value);
+            const vari = variedadLabelForFecha(o.value);
+            const sub = [info.fullLong || o.label || '', vari].filter(Boolean).join(' · ');
             return (
-              '<button type="button" class="ratio-sheet-chip' +
-              (on ? ' is-on' : ' is-off') +
-              '" data-ratio-fecha="' +
+              '<button type="button" class="ratio-fecha-opt' +
+              (on ? ' is-on' : '') +
+              '" role="option" data-ratio-fecha="' +
               escapeAttr(o.value) +
-              '" title="' +
-              escapeAttr(o.label || short) +
-              '" aria-pressed="' +
+              '" aria-selected="' +
               (on ? 'true' : 'false') +
               '">' +
-              '<span class="ratio-sheet-chip-label">' +
+              '<span class="ratio-fecha-mark" aria-hidden="true"></span>' +
+              '<span class="ratio-fecha-opt-text">' +
+              '<b>' +
               escapeHtml(short) +
-              '</span>' +
-              '</button>'
+              '</b>' +
+              (sub ? '<small>' + escapeHtml(sub) + '</small>' : '') +
+              '</span></button>'
             );
           })
           .join('')
@@ -1586,62 +1938,147 @@
         : `Incluye al menos 2 hojas (${active.length} de ${total})`;
       return;
     }
-    const labels = active.map((f) => {
-      const info = fechaInfoFor(f);
-      return (info && info.short) || fechaLabelText(f);
-    });
     const head = varLabel ? varLabel + ' · ' : '';
-    meta.textContent =
-      active.length === total
-        ? `${head}${active.length} hojas · ${labels.join(' · ')}`
-        : `${head}${active.length} de ${total} hojas · ${labels.join(' · ')}`;
+    meta.textContent = head + active.length + ' fechas';
+  }
+
+  const COMPARE_MAX_FECHAS = 3;
+
+  function compareOptsSorted() {
+    return (state.fechaOpts || [])
+      .filter((o) => mismaVariedadQueActiva(o.value))
+      .sort((a, b) => compareFechaSortKey(b.value).localeCompare(compareFechaSortKey(a.value)));
+  }
+
+  function capCompareFechas() {
+    const sorted = compareOptsSorted();
+    if (!sorted.length) return;
+    const active = sorted.filter((o) => !state.compareExcluded[o.value]);
+    let keep;
+    if (state.compareFechaCustom && active.length > 0 && active.length <= COMPARE_MAX_FECHAS) {
+      keep = new Set(active.map((o) => o.value));
+    } else if (state.compareFechaCustom && active.length > COMPARE_MAX_FECHAS) {
+      keep = new Set(active.slice(0, COMPARE_MAX_FECHAS).map((o) => o.value));
+    } else {
+      keep = new Set(sorted.slice(0, COMPARE_MAX_FECHAS).map((o) => o.value));
+    }
+    sorted.forEach((o) => {
+      if (keep.has(o.value)) delete state.compareExcluded[o.value];
+      else state.compareExcluded[o.value] = true;
+    });
   }
 
   function renderCompareSheetBar() {
-    const host = $('compareSheetChips');
-    const exHost = $('compareExcludedChips');
-    const exWrap = $('compareExcludedWrap');
-    if (!host) return;
-    const opts = (state.fechaOpts || []).filter((o) => mismaVariedadQueActiva(o.value));
-    const active = [];
-    const excluded = [];
-    opts.forEach((o) => {
-      if (state.compareExcluded[o.value]) excluded.push(o);
-      else active.push(o);
-    });
-
-    host.innerHTML = active.length
-      ? active
+    const opts = compareOptsSorted();
+    const active = opts.filter((o) => !state.compareExcluded[o.value]);
+    const valueEl = $('compareFechaValue');
+    if (valueEl) {
+      if (!opts.length) valueEl.textContent = 'Sin fechas';
+      else if (!active.length) valueEl.textContent = 'Ninguna';
+      else {
+        valueEl.textContent = active
           .map((o) => {
             const info = fmtFechaClara(o.display || o.value);
-            const short = info.short || o.label;
-            return `<span class="compare-sheet-chip is-on" role="listitem" data-fecha="${escapeAttr(o.value)}" title="${escapeAttr(o.label || info.fullLong || short)}">
-              <span class="compare-sheet-chip-label">${escapeHtml(short)}</span>
-              <button type="button" class="compare-sheet-x" data-action="exclude" data-fecha="${escapeAttr(o.value)}" aria-label="Quitar ${escapeAttr(short)} de la comparación" title="No comparar esta hoja">×</button>
-            </span>`;
+            return (info.short || o.label || '').slice(0, 5);
           })
-          .join('')
-      : '<p class="compare-sheet-empty">Ninguna hoja incluida</p>';
-
-    if (exHost && exWrap) {
-      if (excluded.length) {
-        exWrap.hidden = false;
-        exHost.innerHTML = excluded
-          .map((o) => {
-            const info = fmtFechaClara(o.display || o.value);
-            const short = info.short || o.label;
-            return `<button type="button" class="compare-sheet-chip is-off" role="listitem" data-action="include" data-fecha="${escapeAttr(o.value)}" title="Volver a incluir ${escapeAttr(short)}">
-              <span class="compare-sheet-chip-label">${escapeHtml(short)}</span>
-              <span class="compare-sheet-plus" aria-hidden="true">+</span>
-            </button>`;
-          })
-          .join('');
-      } else {
-        exWrap.hidden = true;
-        exHost.innerHTML = '';
+          .join(' · ');
       }
     }
     updateCompareMeta();
+    const modal = $('compareFechaModal');
+    if (modal && !modal.hidden) renderCompareFechaList();
+  }
+
+  function renderCompareFechaList() {
+    const host = $('compareFechaList');
+    const countEl = $('compareFechaCount');
+    if (!host) return;
+    const draft = state._compareDraft || [];
+    const full = draft.length >= COMPARE_MAX_FECHAS;
+    if (countEl) countEl.textContent = draft.length + ' de ' + COMPARE_MAX_FECHAS;
+    const opts = compareOptsSorted();
+    host.innerHTML = opts.length
+      ? opts
+          .map((o) => {
+            const info = fmtFechaClara(o.display || o.value);
+            const short = info.short || o.label;
+            const on = draft.indexOf(o.value) >= 0;
+            const locked = full && !on;
+            const vari = variedadLabelForFecha(o.value);
+            const sub = [info.fullLong || o.label || '', vari].filter(Boolean).join(' · ');
+            return (
+              '<button type="button" class="compare-fecha-opt' +
+              (on ? ' is-on' : '') +
+              (locked ? ' is-locked' : '') +
+              '" data-compare-fecha="' +
+              escapeAttr(o.value) +
+              '" aria-pressed="' +
+              (on ? 'true' : 'false') +
+              '">' +
+              '<span class="ratio-fecha-mark" aria-hidden="true"></span>' +
+              '<span class="ratio-fecha-opt-text"><b>' +
+              escapeHtml(short) +
+              '</b>' +
+              (sub ? '<small>' + escapeHtml(sub) + '</small>' : '') +
+              '</span></button>'
+            );
+          })
+          .join('')
+      : '<p class="ratio-sheet-empty">Sin fechas</p>';
+  }
+
+  function openCompareFechaModal() {
+    capCompareFechas();
+    state._compareDraft = getCompareActiveFechas().slice();
+    renderCompareFechaList();
+    const root = $('compareFechaModal');
+    if (root) root.hidden = false;
+  }
+
+  function closeCompareFechaModal() {
+    const root = $('compareFechaModal');
+    if (root) root.hidden = true;
+  }
+
+  function toggleCompareDraft(fecha) {
+    const f = String(fecha || '').trim();
+    if (!f) return;
+    const draft = state._compareDraft || (state._compareDraft = []);
+    const i = draft.indexOf(f);
+    if (i >= 0) {
+      draft.splice(i, 1);
+    } else if (draft.length >= COMPARE_MAX_FECHAS) {
+      QB.export.toast('Máximo 3 fechas', 'warn');
+      return;
+    } else {
+      draft.push(f);
+    }
+    renderCompareFechaList();
+  }
+
+  function applyCompareFechaDraft() {
+    const draft = (state._compareDraft || []).slice();
+    if (draft.length < 2) {
+      QB.export.toast('Elige al menos 2 fechas', 'warn');
+      return;
+    }
+    if (draft.length > COMPARE_MAX_FECHAS) {
+      QB.export.toast('Máximo 3 fechas', 'warn');
+      return;
+    }
+    const keep = {};
+    draft.forEach((f) => {
+      keep[f] = true;
+    });
+    compareOptsSorted().forEach((o) => {
+      if (keep[o.value]) delete state.compareExcluded[o.value];
+      else state.compareExcluded[o.value] = true;
+    });
+    state.compareFechaCustom = true;
+    state._compareDirty = true;
+    closeCompareFechaModal();
+    renderCompareSheetBar();
+    runCompare(true);
   }
 
   function setCompareExcluded(fecha, excluded) {
@@ -2239,7 +2676,7 @@
   function renderCompareLt40SupervisorChartBlock() {
     return `<article class="compare-card tone-lt40-chart" aria-label="Supervisores con más personas bajo 30 jarras">
           <h3>Supervisores con más personas &lt; 34 jarras</h3>
-          <p class="compare-hint compare-lt40-chart-hint">Quién concentra más cosechadores con bajo rendimiento en las hojas comparadas</p>
+          <p class="compare-hint compare-lt40-chart-hint">Quién reúne más cosechadores con menos de 30 jarras en las hojas comparadas</p>
           <div class="compare-chart-wrap compare-chart-wrap--full">
             <div id="chartCompareLt40Sup" class="compare-chart compare-chart--full" role="img" aria-label="Gráfico de barras por supervisor"></div>
           </div>
@@ -2460,7 +2897,7 @@
 
     const licHtml = model.licWorst
       ? `<article class="compare-card tone-lic">
-          <h3>LIC (supervisor) más bajo</h3>
+          <h3>LIC con menos jarras por persona</h3>
           <p class="compare-lead"><strong>${escapeHtml(model.licWorst.lic)}</strong> · ${escapeHtml(model.licWorst.supervisor)}</p>
           <div class="compare-cols compare-cols--multi" style="--compare-cols:${model.days.length}">
             ${model.days
@@ -2503,7 +2940,7 @@
       model.lotLow && model.lotHigh
         ? `<div class="compare-lotes">
             <article class="compare-card tone-lot-low">
-              <h3>Lote más bajo (suma de hojas)</h3>
+              <h3>Lote con menos jarras (suma de hojas)</h3>
               <p class="compare-lead">${escapeHtml(QB.charts.shortLoteLabel(model.lotLow.lote))}</p>
               <div class="compare-cols compare-cols--multi" style="--compare-cols:${model.days.length}">
                 ${model.days
@@ -2516,7 +2953,7 @@
               <small>Total todas las hojas: ${fmt(model.lotLow.total)} jarras</small>
             </article>
             <article class="compare-card tone-lot-high">
-              <h3>Lote más alto (suma de hojas)</h3>
+              <h3>Lote con más jarras (suma de hojas)</h3>
               <p class="compare-lead">${escapeHtml(QB.charts.shortLoteLabel(model.lotHigh.lote))}</p>
               <div class="compare-cols compare-cols--multi" style="--compare-cols:${model.days.length}">
                 ${model.days
@@ -2583,7 +3020,10 @@
     if (online) {
       el.className = 'status-chip is-live';
       el.title = 'Datos en vivo · reportes actualizados';
-      if (text) text.textContent = 'EN VIVO';
+      if (text) {
+        text.innerHTML =
+          '<span class="status-live-desk">EN VIVO</span><span class="status-live-mob">En línea</span>';
+      }
     } else {
       el.className = 'status-chip is-offline';
       el.title = 'Sin internet · datos en caché';
@@ -2843,25 +3283,40 @@
     const btnCompare = $('btnCompareRun');
     if (btnCompare) {
       btnCompare.addEventListener('click', () => {
+        if (btnCompare.classList.contains('is-busy')) return;
+        btnCompare.classList.add('is-busy');
         state._compareDirty = true;
-        runCompare(true);
+        Promise.resolve(runCompare(true)).finally(() => btnCompare.classList.remove('is-busy'));
       });
     }
     const sheetBar = $('compareSheetBar');
     if (sheetBar && !sheetBar.dataset.bound) {
       sheetBar.dataset.bound = '1';
       sheetBar.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action][data-fecha]');
-        if (!btn) return;
-        const fecha = btn.getAttribute('data-fecha');
-        const action = btn.getAttribute('data-action');
-        if (action === 'exclude') {
-          setCompareExcluded(fecha, true);
-          runCompare(true);
-        } else if (action === 'include') {
-          setCompareExcluded(fecha, false);
-          runCompare(true);
+        if (e.target.closest('#compareFechaBtn')) openCompareFechaModal();
+      });
+    }
+    const compareFechaModal = $('compareFechaModal');
+    if (compareFechaModal && !compareFechaModal.dataset.bound) {
+      compareFechaModal.dataset.bound = '1';
+      compareFechaModal.addEventListener('click', (e) => {
+        if (e.target.closest('[data-close-compare-fechas]')) {
+          closeCompareFechaModal();
+          return;
         }
+        if (e.target.closest('#compareFechaUltimas')) {
+          state._compareDraft = compareOptsSorted()
+            .slice(0, COMPARE_MAX_FECHAS)
+            .map((o) => o.value);
+          renderCompareFechaList();
+          return;
+        }
+        if (e.target.closest('#compareFechaApply')) {
+          applyCompareFechaDraft();
+          return;
+        }
+        const opt = e.target.closest('[data-compare-fecha]');
+        if (opt) toggleCompareDraft(opt.getAttribute('data-compare-fecha'));
       });
     }
 
@@ -2895,11 +3350,28 @@
         btnImgRatioGt70.addEventListener('click', () => exportRatioImage(btnImgRatioGt70, 'chartDistGt70'));
       }
       ratioBar.addEventListener('click', (e) => {
+        const trigger = e.target.closest('#ratioFechaBtn');
+        if (trigger) {
+          const root = $('ratioFechaDd');
+          const menu = $('ratioSheetChips');
+          const open = !(root && root.classList.contains('is-open'));
+          if (root) root.classList.toggle('is-open', open);
+          if (menu) menu.hidden = !open;
+          if (open) placeFechaMenu(root);
+          trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+          return;
+        }
         const chip = e.target.closest('[data-ratio-fecha]');
         if (!chip) return;
         toggleRatioFecha(chip.getAttribute('data-ratio-fecha'));
       });
     }
+
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t && t.closest && (t.closest('#ratioFechaDd') || t.closest('#compareFechaDd') || t.closest('[data-ratio-fecha]') || t.closest('[data-action][data-fecha]'))) return;
+      closeRatioFechaMenu();
+    });
 
     bindHeroInteractions();
 
@@ -2999,12 +3471,14 @@
 
     document.querySelectorAll('[data-img]').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (btn.classList.contains('is-busy')) return;
         const id = btn.dataset.img;
         if (id === 'chartDist' || id === 'chartDistGt70') {
           exportRatioImage(btn, id);
           return;
         }
-        QB.export.chartImage(id, id + '.png');
+        btn.classList.add('is-busy');
+        Promise.resolve(QB.export.chartImage(id, id + '.png')).finally(() => btn.classList.remove('is-busy'));
       });
     });
     window.addEventListener('online', () => updateConnBadge());
@@ -3042,6 +3516,8 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeModal();
+        closeRatioFechaMenu();
+        closeCompareFechaModal();
         if (QB.select && QB.select._close) QB.select._close();
       }
     });
@@ -3051,6 +3527,7 @@
 
   async function manualRefresh() {
     const btn = $('btnRefresh');
+    if (btn && btn.classList.contains('is-busy')) return;
     const text = btn && btn.querySelector('.status-text');
     const hasData = !!(state.rows && state.rows.length);
     const fechaRoot = document.getElementById('fechaDd');
@@ -3080,8 +3557,17 @@
         const n = (pack.data && pack.data.length) || 0;
         const label = latest ? fechaLabelText(latest) : 'día actual';
         QB.export.toast('Ya lista · ' + label + ' · ' + n + ' personas', 'ok');
+      } else if (!r.error) {
+        const hoy = limaHoyIso();
+        const diaHoja = fechaIsoKey(latest);
+        const pendiente = hoy && diaHoja && diaHoja < hoy ? hoy : diaHoja || hoy;
+        const nombre = fmtFechaClara(pendiente).fullLong || fechaLabelText(latest) || 'ese día';
+        QB.export.toast('Aún no se tiene data del ' + nombre, 'warn');
       } else if (r.error && hasData) {
-        QB.export.toast('Sin red · sigues con lo último', 'warn');
+        QB.export.toast(
+          r.error === 'offline' ? 'Sin red · sigues con lo último' : 'La hoja no respondió · sigues con lo último',
+          'warn'
+        );
       } else if (!hasData) {
         const n = (pack.data && pack.data.length) || 0;
         if (n) QB.export.toast('Ya lista · ' + n + ' personas', 'ok');
@@ -3464,8 +3950,9 @@
     const modsFoot = (dayMods.list.length ? 'Módulos del día' : 'Sin módulos') +
       (dayMods.inicio ? ' · ' + inicioLabel : '');
     const totalJarras = Number(k.totalCajas) || 0;
-    if (!KG_FACTORS.includes(kgFactor)) kgFactor = JARRA_A_KG;
-    const totalKg = totalJarras * kgFactor;
+    const factor = factorKgDia();
+    const totalKg = totalJarras * factor;
+    const factorTxt = fmtFactorKg(factor);
     const avgJarras = k.promedioCajasPorTrabajador || (nListed ? totalJarras / nListed : 0);
     const topJarras = top ? top.c || 0 : 0;
     const leaderJarras = topG ? topG.c || 0 : 0;
@@ -3558,31 +4045,24 @@
               </div>
               <div class="metric-panel metric-panel-main hero-banner-mobile-only">
                 <span class="metric-label">Total del día</span>
-                <div class="metric-row">
-                  <p class="value">${fmt(totalJarras)}</p>
-                  <span class="unit">jarras</span>
-                  <span class="metric-kg-sep" aria-hidden="true">·</span>
-                  <p class="value value-kg">${fmt(totalKg)}</p>
-                  <span class="unit">kg</span>
+                <div class="metric-figures">
+                  <div class="metric-figure">
+                    <p class="value">${fmt(totalJarras)}</p>
+                    <span class="unit">Jarras</span>
+                  </div>
+                  <div class="metric-figure-rule" aria-hidden="true"></div>
+                  <div class="metric-figure">
+                    <p class="value value-kg">${fmt(totalKg)}</p>
+                    <span class="unit">Kg netos</span>
+                  </div>
                 </div>
+                <p class="metric-kg-note" id="metricKgNote" title="El peso es aproximado según lo que llega en QPack. Se multiplica las jarras por el factor del día.">
+                  Peso aproximado según QPack · <b class="metric-kg-factor">× ${escapeHtml(factorTxt)}</b>
+                </p>
                 <div class="metric-subrow">
-                  <span class="metric-chip" title="Cosechadores registrados">${fmt(nPeople)} personas</span>
-                  <span class="metric-chip" title="Grupos LIC activos">${fmt(nGrupos)} grupos</span>
-                  <span class="metric-chip" title="Promedio por cosechador">${fmt(avgJarras)} prom.</span>
-                </div>
-                <div class="metric-spark" aria-hidden="true" title="Tendencia al alza">
-                  <svg class="spark-svg" viewBox="0 0 120 56" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#4ab848" stop-opacity="0.25"/>
-                        <stop offset="100%" stop-color="#4ab848" stop-opacity="0"/>
-                      </linearGradient>
-                    </defs>
-                    <path class="spark-area" d="M4 48 L18 44 L32 40 L46 36 L60 28 L74 24 L88 16 L104 10 L116 6 L116 52 L4 52 Z"/>
-                    <path class="spark-line" d="M4 48 L18 44 L32 40 L46 36 L60 28 L74 24 L88 16 L104 10 L116 6"/>
-                    <circle class="spark-dot" cx="116" cy="6" r="3.2"/>
-                  </svg>
-                  <span class="spark-badge">↑ sube</span>
+                  <span class="metric-chip" title="Cosechadores registrados"><b>${fmt(nPeople)}</b><em>Personas</em></span>
+                  <span class="metric-chip" title="Grupos LIC activos"><b>${fmt(nGrupos)}</b><em>Grupos</em></span>
+                  <span class="metric-chip" title="Promedio por cosechador"><b>${fmt(avgJarras)}</b><em>Promedio</em></span>
                 </div>
               </div>
             </div>
@@ -3599,7 +4079,7 @@
                 </div>
               </div>
               <p class="hero-side-kicker">Total cosechado · ${escapeHtml(fechaMain)}</p>
-              <div class="hero-side-total" title="${fmt(totalJarras)} jarras · ${fmt(totalKg)} kg (× ${kgFactor})">
+              <div class="hero-side-total" title="${fmt(totalJarras)} jarras · ${fmt(totalKg)} kg (× ${factor})">
                 <div class="hero-side-total-item">
                   <strong>${fmt(totalJarras)}</strong>
                   <span>jarras</span>
@@ -3610,9 +4090,9 @@
                     <span>kg</span>
                   </p>
                   <div class="hero-kg-factors" role="group" aria-label="Factor jarra a kg">
-                    ${KG_FACTORS.map(
+                    ${(esDiaMagica() ? [KG_MAGICA, 1.12, 1.14] : KG_FACTORS).map(
                       (f) =>
-                        `<button type="button" class="hero-kg-factor${f === kgFactor ? ' is-on' : ''}" data-kg-factor="${f}" data-jarras="${totalJarras}" aria-pressed="${f === kgFactor ? 'true' : 'false'}" title="kg = jarras × ${f}">${String(f)}</button>`
+                        `<button type="button" class="hero-kg-factor${f === factor ? ' is-on' : ''}" data-kg-factor="${f}" data-jarras="${totalJarras}" aria-pressed="${f === factor ? 'true' : 'false'}" title="kg = jarras × ${f}">${Number(f).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 4 })}</button>`
                     ).join('')}
                   </div>
                 </div>
@@ -5018,6 +5498,7 @@
         modal.classList.remove('is-sheet');
         modal.classList.remove('is-warn-modal');
         modal.classList.remove('is-stat-tip-modal');
+        modal.classList.remove('is-encargado-modal');
         modal.classList.remove('is-refresh-modal');
         modal.classList.remove('is-auth-modal');
         modal.classList.remove('is-historial-modal');
@@ -5274,6 +5755,13 @@
     return x.toLocaleString('es-PE', { maximumFractionDigits: 1 });
   }
 
+  function historialDecisionLabel(decision) {
+    if (decision === 'NO APTO') return 'En seguimiento';
+    if (decision === 'APTO') return 'Puede continuar';
+    if (decision === 'SIN DATA') return 'Sin historial';
+    return decision || '—';
+  }
+
   function paintHistorialLote(rows) {
     const box = $('historialLote');
     const list = $('historialList');
@@ -5298,20 +5786,20 @@
       '</b> en la lista</span>' +
       '<span class="is-apto"><b>' +
       nApto +
-      '</b> aptos</span>' +
+      '</b> pueden continuar</span>' +
       '<span class="is-no"><b>' +
       nNo +
-      '</b> no aptos</span>' +
+      '</b> en seguimiento</span>' +
       '<span class="is-sin"><b>' +
       nSin +
-      '</b> sin data</span>' +
+      '</b> sin historial</span>' +
       '</div>' +
-      '<p class="historial-filtro-hint">NO APTO = viene bajando desde el 7/09. Las faltas no entran en la tendencia.</p>' +
+      '<p class="historial-filtro-hint">En seguimiento = la tendencia baja desde el 7/09. Los días sin asistencia no entran en esa lectura.</p>' +
       '<div class="historial-lote-actions">' +
       '<button type="button" class="btn btn-primary" id="historialLoteXls">Descargar resultado</button>' +
       '</div>' +
       '<div class="historial-lote-wrap"><table class="historial-lote-table"><thead><tr>' +
-      '<th>Decisión</th><th>Nombre</th><th>DNI</th><th>Bajada</th><th>Días</th><th>Faltas</th>' +
+      '<th>Decisión</th><th>Nombre</th><th>DNI</th><th>Tendencia</th><th>Días</th><th>Sin asistencia</th>' +
       dayHeads +
       '<th>Supervisor</th></tr></thead><tbody>' +
       rows
@@ -5332,7 +5820,7 @@
             '" data-hist-dni="' +
             escapeHtml(r.dni) +
             '"><td><strong>' +
-            escapeHtml(r.decision) +
+            escapeHtml(historialDecisionLabel(r.decision)) +
             '</strong></td><td>' +
             escapeHtml(r.nombre || '—') +
             '</td><td>' +
@@ -5370,7 +5858,7 @@
       return;
     }
     const dias = ((QB.historial && QB.historial.dias) || []).slice().reverse();
-    const header = ['Decision', 'Nombre', 'DNI', 'Bajada', 'Dias trabajo', 'Faltas']
+    const header = ['Decision', 'Nombre', 'DNI', 'Tendencia', 'Dias trabajo', 'Sin asistencia']
       .concat(dias.map((f) => QB.historial.fmtFecha(f)))
       .concat(['Supervisor']);
     const body = rows.map((r) => {
@@ -5381,7 +5869,7 @@
         if (d.estado === 'falta') return 'F';
         return '';
       });
-      return [r.decision, r.nombre || '', r.dni, r.bajada || '', r.diasOk, r.diasFalto]
+      return [historialDecisionLabel(r.decision), r.nombre || '', r.dni, r.bajada || '', r.diasOk, r.diasFalto]
         .concat(dayVals)
         .concat([r.jefe || '']);
     });
@@ -5390,12 +5878,13 @@
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
     QB.export._downloadBlob(blob, 'QBerries_apto_historial.xlsx');
-    if (QB.export.toast) QB.export.toast('Excel listo · apto / no apto', 'ok');
+    if (QB.export.toast) QB.export.toast('Excel listo', 'ok');
   }
 
   function paintHistorialList(q) {
     const box = $('historialList');
     if (!box || !QB.historial) return;
+    if (QB.workers && QB.workers.ready && QB.historial.refrescarNombres) QB.historial.refrescarNombres();
     const rows = QB.historial.list ? QB.historial.list(q) : [];
     if (q) box.hidden = false;
     const count = $('historialFiltroCount');
@@ -5587,6 +6076,11 @@
   }
 
   async function updateApp() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      closeModal();
+      QB.export.toast('Sin red · sigues con lo guardado en el celular', 'warn');
+      return;
+    }
     closeModal();
     showLoadModal('Actualizando app', 'Descargando la versión más reciente…');
     try {

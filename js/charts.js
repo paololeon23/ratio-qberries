@@ -199,7 +199,7 @@ QB.charts = {
   toolboxMini() {
     const mobile = this.isMobile();
     return {
-      show: true,
+      show: !mobile,
       right: 0,
       top: 0,
       itemSize: mobile ? 15 : 14,
@@ -232,16 +232,22 @@ QB.charts = {
     const panel = el.closest('.chart-panel') || el.parentElement;
     const avail = Math.max(0, (panel && panel.clientWidth) || 0);
     const mobile = this.isMobile();
-    const barSlot = mobile ? 54 : 72;
+    const barSlot = 72;
     const pad = 28;
-    const inner = Math.max(280, avail - pad);
+    const inner = Math.max(mobile ? 0 : 280, avail - pad);
     const count = Math.max(1, n || 1);
-    const need = Math.max(inner, count * barSlot);
+    const need = mobile ? Math.max(inner, avail) : Math.max(inner, count * barSlot);
     el.style.boxSizing = 'border-box';
-    el.style.width = need + 'px';
-    el.style.minWidth = need + 'px';
-    el.style.maxWidth = 'none';
-    el.style.height = (mobile ? 440 : 500) + 'px';
+    if (mobile) {
+      el.style.width = '100%';
+      el.style.minWidth = '0';
+      el.style.maxWidth = '100%';
+    } else {
+      el.style.width = need + 'px';
+      el.style.minWidth = need + 'px';
+      el.style.maxWidth = 'none';
+    }
+    el.style.height = (mobile ? 248 : 500) + 'px';
     el.style.minHeight = el.style.height;
     return { avail, need };
   },
@@ -732,7 +738,7 @@ QB.charts = {
     const avg = Number((kpis && kpis.promedioCajasPorTrabajador) || 0);
     const max = 160;
     const pct = max ? avg / max : 0;
-    let zoneText = 'Ritmo bajo';
+    let zoneText = 'Por acompañar';
     let zoneColor = '#e41e26';
     if (pct >= 0.82) { zoneText = '¡Excelente!'; zoneColor = '#4ab848'; }
     else if (pct >= 0.63) { zoneText = 'Buen ritmo'; zoneColor = '#8dc63f'; }
@@ -846,7 +852,7 @@ QB.charts = {
     const max = 160;
     const pct = max ? avg / max : 0;
 
-    let zone = 'Ritmo bajo';
+    let zone = 'Por acompañar';
     let color = '#e41e26';
     if (pct >= 0.82) { zone = '¡Excelente!'; color = '#4ab848'; }
     else if (pct >= 0.63) { zone = 'Buen ritmo'; color = '#8dc63f'; }
@@ -987,7 +993,7 @@ QB.charts = {
       toolbox: opts.hideToolbox ? { show: false } : this.toolboxMini(),
       xAxis: {
         type: 'category',
-        data: bins.map((b) => b.label),
+        data: bins.map((b) => (mobile ? String(b.label).replace(' JARRAS', '') : b.label)),
         name: mobile ? '' : 'Ratio de cosecha/día',
         nameLocation: 'middle',
         nameGap: mobile ? 36 : 34,
@@ -997,7 +1003,7 @@ QB.charts = {
           fontWeight: 750,
           color: '#1f2a30',
           interval: 0,
-          rotate: mobile ? 28 : 0
+          rotate: 0
         }),
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#c5d2c9', width: 2 } }
@@ -1032,7 +1038,7 @@ QB.charts = {
             fontSize: mobile ? 11 : 12,
             formatter: (p) => {
               const n = Number(p.value) || 0;
-              return n + ' personas';
+              return mobile ? String(n) : n + ' personas';
             }
           }
         }
@@ -1177,7 +1183,7 @@ QB.charts = {
       toolbox: { show: false },
       xAxis: {
         type: 'category',
-        data: bins.map((b) => b.label),
+        data: bins.map((b) => (mobile ? String(b.label).replace(' JARRAS', '') : b.label)),
         name: 'Ratio de cosecha/día',
         nameLocation: 'middle',
         nameGap: 34,
@@ -1356,7 +1362,7 @@ QB.charts = {
       toolbox: this.toolboxMini(),
       xAxis: {
         type: 'category',
-        data: bins.map((b) => b.label),
+        data: bins.map((b) => (mobile ? String(b.label).replace(' JARRAS', '') : b.label)),
         name: mobile ? '' : 'Jarras',
         nameLocation: 'middle',
         nameGap: mobile ? 36 : 34,
@@ -1366,7 +1372,7 @@ QB.charts = {
           fontWeight: 750,
           color: '#1f2a30',
           interval: 0,
-          rotate: mobile ? 28 : 0
+          rotate: 0
         }),
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#c5d2c9', width: 2 } }
@@ -1401,7 +1407,7 @@ QB.charts = {
             fontSize: mobile ? 11 : 12,
             formatter: (p) => {
               const n = Number(p.value) || 0;
-              return n + ' personas';
+              return mobile ? String(n) : n + ' personas';
             }
           }
         }
@@ -1618,7 +1624,7 @@ QB.charts = {
     });
   },
 
-  /** Ranking de lotes · barras horizontales (más fácil de leer) */
+  /** Ranking de lotes · barras verticales */
   renderLotes(rows) {
     const chart = this.ensure('chartLotes');
     if (!chart) return;
@@ -2249,19 +2255,23 @@ QB.charts = {
     const top = list;
     const wrap = host.parentElement;
     const parentW = (wrap && wrap.clientWidth) || host.clientWidth || 320;
-    const barSlot = mobile ? 76 : 88;
-    const needScroll = top.length > (mobile ? 4 : 6);
-    const chartW = needScroll
-      ? Math.max(parentW, top.length * barSlot + 56)
-      : parentW;
-    const chartH = mobile ? 260 : 320;
+    const barSlot = mobile ? 48 : 88;
+    const needScroll = !mobile && top.length > 6;
+    const chartW = needScroll ? Math.max(parentW, top.length * barSlot + 56) : parentW;
+    const chartH = mobile ? 300 : 320;
 
     if (wrap) {
       wrap.classList.toggle('is-scrollable', needScroll);
     }
-    host.style.width = chartW + 'px';
-    host.style.maxWidth = 'none';
-    host.style.minWidth = chartW + 'px';
+    if (mobile) {
+      host.style.width = '100%';
+      host.style.maxWidth = '100%';
+      host.style.minWidth = '0';
+    } else {
+      host.style.width = chartW + 'px';
+      host.style.maxWidth = 'none';
+      host.style.minWidth = chartW + 'px';
+    }
     host.style.minHeight = chartH + 'px';
     host.style.height = chartH + 'px';
 
@@ -2406,9 +2416,15 @@ QB.charts = {
   renderTopLotes(rows, kpis) {
     const chart = this.ensure('chartTopLotes');
     if (!chart) return;
-    const items = this._loteItems(rows, kpis, 12);
-    const self = this;
     const mobile = this.isMobile();
+    const items = this._loteItems(rows, kpis, mobile ? 8 : 12);
+    const self = this;
+    const host = document.getElementById('chartTopLotes');
+    if (host) {
+      host.style.height = '';
+      host.style.minHeight = '';
+      host.style.maxHeight = '';
+    }
     if (!items.length) {
       chart.clear();
       chart.setOption({
@@ -2438,7 +2454,9 @@ QB.charts = {
           );
         }
       }),
-      grid: { left: 10, right: 12, top: 28, bottom: mobile ? 56 : 48, containLabel: true },
+      grid: mobile
+        ? { left: 6, right: 8, top: 26, bottom: 4, containLabel: true }
+        : { left: 10, right: 12, top: 28, bottom: 48, containLabel: true },
       toolbox: this.toolboxMini(),
       xAxis: {
         type: 'category',
@@ -2446,17 +2464,18 @@ QB.charts = {
         axisLabel: this._label({
           fontSize: mobile ? 9 : 10,
           fontWeight: 650,
-          rotate: 28,
-          color: '#1a2420'
+          rotate: mobile ? 42 : 28,
+          color: '#1a2420',
+          interval: 0
         }),
         axisTick: { show: false }
       },
       yAxis: {
         type: 'value',
-        name: 'Jarras',
-        splitNumber: mobile ? 3 : 4,
+        name: mobile ? '' : 'Jarras',
+        splitNumber: 4,
         minInterval: 1,
-        axisLabel: this._numAxisLabel(),
+        axisLabel: this._numAxisLabel({ fontSize: mobile ? 10 : 12 }),
         splitLine: { lineStyle: { color: '#eef2ec', type: 'dashed' } }
       },
       series: [{
@@ -2468,19 +2487,20 @@ QB.charts = {
             color: self.barGrad(self.logoPair(i)[0], self.logoPair(i)[1], true)
           }
         })),
-        barMaxWidth: mobile ? 28 : 36,
-        barCategoryGap: '32%',
+        barMaxWidth: mobile ? 22 : 36,
+        barCategoryGap: mobile ? '28%' : '32%',
         label: {
           show: true,
           position: 'top',
           color: '#143525',
           fontWeight: 750,
-          fontSize: 11,
+          fontSize: mobile ? 10 : 11,
           formatter: (p) => self.fmtK(p.value)
         }
       }],
       animationDuration: 700
     }, true);
+    chart.resize();
   },
 
   _insightTopLotes(rows, kpis) {
@@ -2573,9 +2593,10 @@ QB.charts = {
       .sort((a, b) => (b.c || 0) - (a.c || 0) || (b.avg || 0) - (a.avg || 0));
 
     if (!el) return;
-    const n = items.length;
-    this._topLicCount = n;
     const mobile = this.isMobile();
+    const shown = mobile ? items.slice(0, 6) : items;
+    const n = shown.length;
+    this._topLicCount = n;
     const fit = this._fitTopLicWidth(el, n);
     if (fit.avail < 40) {
       const tries = Number(el.dataset.fitTries || 0);
@@ -2612,7 +2633,7 @@ QB.charts = {
         trigger: 'axis',
         axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(20, 53, 37, 0.06)' } },
         formatter: (p) => {
-          const g = items[p[0].dataIndex];
+          const g = shown[p[0].dataIndex];
           const rank = p[0].dataIndex + 1;
           const pct = (((g.c || 0) / total) * 100).toFixed(1);
           const puesto =
@@ -2639,22 +2660,25 @@ QB.charts = {
           );
         }
       }),
-      grid: { left: 44, right: 16, top: 62, bottom: mobile ? 78 : 86, containLabel: false },
+      grid: { left: mobile ? 26 : 44, right: mobile ? 6 : 16, top: mobile ? 28 : 62, bottom: mobile ? 22 : 86, containLabel: false },
       toolbox: { show: false },
       xAxis: {
         type: 'category',
-        data: items.map((g) => self.apellidoDe(g.grupo)),
+        data: shown.map((g) => self.apellidoDe(g.grupo)),
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#dfe6e0' } },
         axisLabel: this._label({
-          fontSize: mobile ? 10 : 11,
+          fontSize: mobile ? 9 : 11,
           fontWeight: 700,
           color: '#143525',
           interval: 0,
           hideOverlap: false,
-          lineHeight: 14,
+          lineHeight: 13,
+          width: mobile ? 52 : undefined,
+          overflow: mobile ? 'truncate' : 'none',
           formatter: (v) => {
             const parts = String(v || '').trim().split(/\s+/);
+            if (mobile) return parts[0] || v;
             if (parts.length >= 2) return parts[0] + '\n' + parts.slice(1).join(' ');
             return v;
           }
@@ -2670,14 +2694,14 @@ QB.charts = {
       },
       series: [{
         type: 'bar',
-        data: items.map((g, i) => ({
+        data: shown.map((g, i) => ({
           value: g.c,
           itemStyle: {
             borderRadius: [10, 10, 3, 3],
             color: self.licPlaceColor(i + 1, true)
           }
         })),
-        barMaxWidth: n <= 8 ? (mobile ? 48 : 64) : mobile ? 36 : 48,
+        barMaxWidth: n <= 8 ? (mobile ? 28 : 64) : mobile ? 18 : 48,
         barCategoryGap: n <= 6 ? '22%' : '32%',
         showBackground: true,
         backgroundStyle: { color: 'rgba(20, 53, 37, 0.045)', borderRadius: [10, 10, 3, 3] },
@@ -2687,49 +2711,57 @@ QB.charts = {
           distance: 6,
           formatter: (p) => {
             const place = p.dataIndex + 1;
+            if (mobile) return '{mark|' + place + '}\n{val|' + self.fmtK(p.value) + '}';
             const tag = place === 1 ? 'gold' : place === 2 ? 'silv' : place === 3 ? 'bron' : 'rank';
             const mark = place <= 3 ? place + '.º' : String(place);
             return '{' + tag + '|' + mark + '}\n{val|' + self.fmtK(p.value) + '}';
           },
           rich: {
+            mark: {
+              color: '#5c6b63',
+              fontWeight: 650,
+              fontSize: 10,
+              align: 'center',
+              lineHeight: 14
+            },
             gold: {
               backgroundColor: '#c9a227',
               color: '#fffdf4',
               fontWeight: 800,
-              fontSize: mobile ? 10 : 11,
+              fontSize: mobile ? 9 : 11,
               borderRadius: 10,
-              padding: [3, 8],
+              padding: mobile ? [2, 4] : [3, 8],
               align: 'center'
             },
             silv: {
               backgroundColor: '#7d8794',
               color: '#ffffff',
               fontWeight: 800,
-              fontSize: mobile ? 10 : 11,
+              fontSize: mobile ? 9 : 11,
               borderRadius: 10,
-              padding: [3, 8],
+              padding: mobile ? [2, 4] : [3, 8],
               align: 'center'
             },
             bron: {
               backgroundColor: '#a06732',
               color: '#fff8f0',
               fontWeight: 800,
-              fontSize: mobile ? 10 : 11,
+              fontSize: mobile ? 9 : 11,
               borderRadius: 10,
-              padding: [3, 8],
+              padding: mobile ? [2, 4] : [3, 8],
               align: 'center'
             },
             rank: {
               backgroundColor: '#e8eee9',
               color: '#143525',
               fontWeight: 750,
-              fontSize: mobile ? 10 : 11,
+              fontSize: mobile ? 9 : 11,
               borderRadius: 10,
-              padding: [3, 7],
+              padding: mobile ? [2, 4] : [3, 7],
               align: 'center'
             },
             val: {
-              fontSize: mobile ? 10 : 11,
+              fontSize: mobile ? 9 : 11,
               fontWeight: 750,
               color: '#143525',
               lineHeight: 18,
@@ -2773,7 +2805,8 @@ QB.charts = {
     const el = document.getElementById('chartLiderazgo');
     if (!el) return;
     this.dispose('chartLiderazgo');
-    const KG = 1.15;
+    const variedadHost = String(el.getAttribute('data-variedad') || '');
+    const KG = /magic/i.test(variedadHost) ? 52409.6 / 47190 : 1.15;
     const items = [...(supervisores || [])]
       .filter((s) => (s.c || 0) > 0)
       .sort((a, b) => (b.avg || 0) - (a.avg || 0) || (b.c || 0) - (a.c || 0));
@@ -2815,6 +2848,94 @@ QB.charts = {
       }
       return '<span class="sup-medal is-rest">' + place + '</span>';
     };
+    if (this.isMobile()) {
+      const PAGE = 10;
+      const sig = items.map((s) => (s.lic || '') + ':' + (s.avg || 0) + ':' + (s.c || 0)).join('|');
+      if (el.dataset.supSig !== sig) {
+        el.dataset.supSig = sig;
+        el.dataset.supPage = '1';
+      }
+      const pages = Math.max(1, Math.ceil(items.length / PAGE));
+      let page = Number(el.dataset.supPage) || 1;
+      if (page < 1) page = 1;
+      if (page > pages) page = pages;
+      el.dataset.supPage = String(page);
+      const start = (page - 1) * PAGE;
+      const slice = items.slice(start, start + PAGE);
+      const cards = slice
+        .map((s, i) => {
+          const place = start + i + 1;
+          const kg = (Number(s.c) || 0) * KG;
+          const rowCls = place === 1 ? 'is-gold' : place === 2 ? 'is-silver' : place === 3 ? 'is-bronze' : '';
+          const best = s.bestNombre && s.bestNombre !== '—' ? esc(s.bestNombre) : '—';
+          return (
+            '<article class="sup-card ' +
+            rowCls +
+            '">' +
+            '<div class="sup-card-head">' +
+            medalHtml(place) +
+            '<div class="sup-card-who"><strong>' +
+            esc(s.nombre) +
+            '</strong><span class="sup-rank-lic">' +
+            esc(s.lic) +
+            '</span></div></div>' +
+            '<div class="sup-card-metrics">' +
+            '<span><b>' +
+            num(s.c) +
+            '</b><em>jarras</em></span>' +
+            '<span><b>' +
+            num(kg) +
+            '</b><em>kg</em></span>' +
+            '<span><b>' +
+            num(s.avg) +
+            '</b><em>ratio</em></span></div>' +
+            '<p class="sup-card-best">' +
+            (ico.crown ? ico.crown(12) : '') +
+            '<em>Cosechador</em>' +
+            '<span>' +
+            best +
+            '</span></p></article>'
+          );
+        })
+        .join('');
+      const from = start + 1;
+      const to = start + slice.length;
+      const pager =
+        pages > 1
+          ? '<nav class="sup-rank-pager" aria-label="Páginas de supervisores">' +
+            '<button type="button" data-sup-page="' +
+            (page - 1) +
+            '"' +
+            (page <= 1 ? ' disabled' : '') +
+            '>Anterior</button>' +
+            '<span>' +
+            from +
+            '–' +
+            to +
+            ' de ' +
+            items.length +
+            '</span>' +
+            '<button type="button" data-sup-page="' +
+            (page + 1) +
+            '"' +
+            (page >= pages ? ' disabled' : '') +
+            '>Siguiente</button></nav>'
+          : '';
+      el.innerHTML = '<div class="sup-rank-cards">' + cards + '</div>' + pager;
+      if (!el.dataset.pageBound) {
+        el.dataset.pageBound = '1';
+        el.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-sup-page]');
+          if (!btn || btn.disabled) return;
+          const next = Number(btn.getAttribute('data-sup-page'));
+          if (!next || next < 1) return;
+          el.dataset.supPage = String(next);
+          this.renderLiderazgo(el._supItems || []);
+        });
+      }
+      el._supItems = items;
+      return;
+    }
     const rows = items
       .map((s, i) => {
         const place = i + 1;
@@ -2899,14 +3020,14 @@ QB.charts = {
         ' · ' +
         this.fmtK(top.c) +
         ' jarras · ' +
-        this.fmtK(top.c * 1.15) +
+        this.fmtK(top.c * (/magic/i.test(variedad) ? 52409.6 / 47190 : 1.15)) +
         ' kg · ratio ' +
         this.fmtK(top.avg) +
         '.'
     );
   },
 
-  /** Tarjetas alineadas · siempre 3 en Atención (Mejor · Peor · Menos personal) · por jarras totales */
+  /** Tarjetas alineadas · siempre 3 en Seguimiento (más jarras · menos jarras · equipo pequeño) */
   renderSupervisorAlerts(stats, merged) {
     const host = document.getElementById('attnList');
     if (!host) return;
@@ -2918,7 +3039,7 @@ QB.charts = {
         '<div class="attn-top"><span class="attn-tag">Info</span>' +
         '<div class="attn-who"><strong class="attn-lic">—</strong><span class="attn-jefe">Sin datos</span></div></div>' +
         '<div class="attn-metrics"><span><b>—</b> cosech.</span><span><b>—</b> jarras</span><span><b>—</b> promedio</span></div>' +
-        '<span class="attn-action">Sin alertas por ahora</span></article>';
+        '<span class="attn-action">Sin novedades por ahora</span></article>';
       return;
     }
 
@@ -2960,9 +3081,9 @@ QB.charts = {
     });
 
     const cards = [
-      card('ok', 'Mejor LIC', best, 'Referencia del día'),
-      card('warn', 'Peor LIC', worst, 'Revisar lote'),
-      card('warn', 'Menos personal', few, 'Sumar cosechadores')
+      card('ok', 'Más jarras', best, 'Referencia del día'),
+      card('warn', 'Menos jarras', worst, 'Acompañar en campo'),
+      card('warn', 'Equipo pequeño', few, 'Puede sumar gente')
     ];
 
     host.innerHTML = cards
@@ -3021,7 +3142,7 @@ QB.charts = {
         this.fmtK(top.c) +
         ' jarras' +
         (top.n ? ' (' + top.n + ' personas)' : '') +
-        '. El más bajo es ' +
+        '. Con menos jarras: ' +
         this.grupoConJefe(low.grupo) +
         ' con ' +
         this.fmtK(low.c) +
@@ -3045,7 +3166,7 @@ QB.charts = {
         this.fmtK(top.c) +
         ' jarras). Mediana del día ≈ ' +
         this.fmtK(med.c) +
-        '. Revisa a quienes están muy por debajo.'
+        '. El resto del día queda cerca de esa mediana.'
     );
   },
 
@@ -3076,7 +3197,7 @@ QB.charts = {
         hi.lote +
         ' (' +
         this.fmtK(hi.c) +
-        '). Lote flojo: ' +
+        '). Con menos avance: ' +
         lo.lote +
         ' (' +
         this.fmtK(lo.c) +
@@ -3099,7 +3220,7 @@ QB.charts = {
         this.shortGrupo(best.grupo) +
         ' ≈ ' +
         this.fmtK(best.avg) +
-        ' jarras/persona. Más bajo: ' +
+        ' jarras/persona. Con menos ritmo: ' +
         this.shortGrupo(worst.grupo) +
         ' ≈ ' +
         this.fmtK(worst.avg) +
@@ -3153,11 +3274,11 @@ QB.charts = {
         this.shortGrupo(hi[0]) +
         ' en lote ' +
         hiLote +
-        '. Más flojo: ' +
+        '. Con menos jarras: ' +
         this.shortGrupo(lo[0]) +
         ' en lote ' +
         loLote +
-        '. Ahí conviene mirar si faltó gente o bajó el ritmo.'
+        '. Ahí se puede ver si hizo falta gente o el ritmo fue más suave.'
     );
   },
 
@@ -3187,14 +3308,14 @@ QB.charts = {
         this.shortGrupo(lowRhythm.grupo) +
         ' ya tiene ' +
         lowRhythm.n +
-        ' personas pero solo ' +
+        ' personas y un promedio de ' +
         this.fmtK(lowRhythm.avg) +
-        ' jarras/persona. Idea: revisar ritmo/lote, no solo sumar gente.';
+        ' jarras/persona. Idea: acompañar el ritmo del lote, no solo sumar gente.';
       msg = msg ? msg + ' · ' + part : part;
     }
     if (!msg) {
       msg =
-        'Los grupos están alineados: más gente ≈ más jarras. Si un punto queda abajo de la línea, el ritmo es bajo; si queda a la izquierda, faltan personas.';
+        'Los grupos van parejos: más gente ≈ más jarras. Si un punto queda abajo de la línea, el ritmo va más suave; si queda a la izquierda, el equipo es más pequeño.';
     }
     this.setInsight('insightJarrasVs', msg);
   },
@@ -3581,9 +3702,9 @@ QB.charts = {
           if (p.seriesType !== 'scatter') return '';
           const g = items[p.dataIndex];
           if (!g) return '';
-          const vs = g.avg >= avgPer * 0.9 ? 'ritmo OK' : 'ritmo bajo';
+          const vs = g.avg >= avgPer * 0.9 ? 'ritmo en línea' : 'ritmo por acompañar';
           const people =
-            g.n < maxN * 0.5 ? 'pocas personas' : 'personal suficiente';
+            g.n < maxN * 0.5 ? 'equipo más pequeño' : 'equipo completo';
           return (
             '<b>' +
             self.grupoConJefe(g.grupo) +

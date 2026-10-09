@@ -289,7 +289,11 @@ function listHojaSheets_() {
 }
 
 function sheetKeyOf_(sh, index) {
-  return parseSheetFecha_(sh.getName()) || ('__hoja__' + index);
+  var n = hojaNum_(sh.getName());
+  if (n >= 0) return '__hoja__' + n;
+  var fechaNombre = parseSheetFecha_(sh.getName());
+  if (fechaNombre) return fechaNombre;
+  return '__hoja__i' + index;
 }
 
 function readFechaMap_(cache) {
@@ -392,7 +396,7 @@ function loadAllSheets_(onlyKey) {
     var sheetFecha = parseSheetFecha_(sh.getName());
     var dominant = dominantFecha_(grid, iFecha);
     var displayFecha = sheetFecha || dominant || '';
-    var sheetKey = sheetFecha || ('__hoja__' + s);
+    var sheetKey = sheetKeyOf_(sh, s);
     sheetNames[sheetKey] = sh.getName();
     if (/^\d{4}-\d{2}-\d{2}/.test(String(displayFecha))) {
       sheetDisplayFechas[sheetKey] = String(displayFecha).slice(0, 10);

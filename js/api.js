@@ -492,13 +492,9 @@ QB.api = {
           const gotHoy = String((got && got.hoy) || '').trim();
           if (got && !got._keptCache && gotHoy === traer[i].fecha && (got.data || []).length) pack = got;
         }
-        let changedLatest = false;
-        if (!nuevas.length && latestKey) {
-          const r = await this.refresh({ fecha: latestKey });
-          if (r && r.pack && (r.pack.data || []).length && !r.error) {
-            pack = r.pack;
-            changedLatest = !!r.changed;
-          }
+        if (!nuevas.length) {
+          window.dispatchEvent(new CustomEvent('qb:data-tick', { detail: this._lastPack || {} }));
+          return;
         }
         if (pack) pack.hojas = remote;
         else if (this._lastPack) this._lastPack.hojas = remote;
@@ -506,7 +502,7 @@ QB.api = {
         const newHoy = String((pack && pack.hoy) || latestKey || '').trim();
         const wasOnLatest = !active || active === latestBefore || active === newHoy;
         const hojaNueva = nuevas.length > 0 && !!(pack && (pack.data || []).length);
-        if (shown && (hojaNueva || (changedLatest && wasOnLatest))) {
+        if (shown && hojaNueva) {
           window.dispatchEvent(
             new CustomEvent('qb:data-updated', {
               detail: {

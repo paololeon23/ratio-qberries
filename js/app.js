@@ -159,6 +159,30 @@
     document.body.classList.add('is-file-protocol');
   }
 
+  function hojaNumNombre(nombre) {
+    const m = String(nombre || '').match(/hoja\s*(\d+)/i);
+    return m ? Number(m[1]) : -1;
+  }
+
+  function hojaNumDeFecha(key) {
+    const h = (state.hojas || []).find((x) => x.fecha === key);
+    if (h) return hojaNumNombre(h.nombre);
+    return hojaNumNombre(key);
+  }
+
+  function hojaTope(hojas) {
+    let best = null;
+    let n = -1;
+    (hojas || []).forEach((h) => {
+      const num = hojaNumNombre(h && h.nombre);
+      if (num > n) {
+        n = num;
+        best = h;
+      }
+    });
+    return best;
+  }
+
   async function boot() {
     if (location.protocol === 'file:') {
       hideLoadModal();
@@ -202,13 +226,12 @@
       }
     });
 
-    if (cached && (cached.data || []).length) {
+    if (cached && (cached.data || []).length && typeof navigator !== 'undefined' && navigator.onLine === false) {
       extrasP.catch(function () {});
       applyPack(cached, { skipPrefetch: true, requestedFecha: cachedHoy, force: true });
       painted = true;
       revealApp();
       hideSyncBanner();
-      /* Las otras hojas se piden solo si la primera llamada a Google respondió. */
     } else if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       revealApp();
       hideSyncBanner();
@@ -253,6 +276,11 @@
           QB.export.toast('Hay una hoja nueva · ábrela en la fecha', 'ok');
           return;
         }
+        const numIn = hojaNumNombre(p.ultimaHoja);
+        const numNow = hojaNumDeFecha(state.fecha);
+        const misma = String(p.hoy || '') === String(state.fecha || '');
+        if (numIn >= 0 && numNow >= 0 && numIn < numNow) return;
+        if (misma && !detail.hojaNueva) return;
         applyPack(p, { requestedFecha: String(p.hoy || '').trim(), force: true });
         flashHero();
         hideSyncBanner();
@@ -272,21 +300,9 @@
         const detail = (e && e.detail) || {};
         const f = String(detail.fecha || '').trim();
         const packIn = detail.pack;
-        if (f && packIn) {
-          paintFechaVariedad(f, packIn);
-          refreshVarietyWall();
-        }
         if (!f || f !== state.fecha) return;
-        const pack = detail.pack;
-        if (!pack || !(pack.data || []).length) return;
-        if (detail.fromCache) return;
-        applyPack(pack, { skipPrefetch: true, requestedFecha: f });
-        hideSyncBanner();
-        const n = (pack.data && pack.data.length) || 0;
-        QB.export.toast(
-          'Datos actualizados · ' + fechaLabelText(f) + ' · ' + fmt(n) + ' personas',
-          'ok'
-        );
+        paintFechaVariedad(f, packIn);
+        refreshVarietyWall();
       });
     }
 
@@ -310,10 +326,25 @@
           applyPack(pack, { skipPrefetch: true, requestedFecha: latest, force: true });
         }
         painted = true;
+        const tope = hojaTope(pack.hojas);
+        const numPack = hojaNumNombre(pack.ultimaHoja);
+        const numTope = tope ? hojaNumNombre(tope.nombre) : -1;
+        if (tope && numTope > numPack && tope.fecha && tope.fecha !== latest) {
+          try {
+            const got = await QB.api.cargarTodo({
+              fecha: tope.fecha,
+              allowCacheFallback: true,
+              forzarRed: true
+            });
+            if (got && (got.data || []).length) {
+              applyPack(got, { skipPrefetch: true, requestedFecha: tope.fecha, force: true });
+            }
+          } catch (eTop) { /* se queda la hoja que respondió el GET */ }
+        }
       }
-      /* Pantalla ya lista · las hojas más viejas se leen una por una, sin frenar. */
+      const mostrada = String(state.fecha || latest || '').trim();
       if (painted && pack && pack.hojas && !r.error && QB.api.prefetchFechas) {
-        QB.api.prefetchFechas(pack.hojas, latest);
+        QB.api.prefetchFechas(pack.hojas, mostrada);
       }
       revealApp();
       hideSyncBanner();

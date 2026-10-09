@@ -169,26 +169,10 @@ function todo_(p) {
   var hojas = meta.hojas;
   var built = buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, fechaHoy, hojas, fechaAyer);
 
+  /* Solo este día. Armar todas las hojas antes de responder pasaba de 50s y el celular se quedaba en blanco. */
   try {
     cache.put('todo_v4_meta_' + stamp, JSON.stringify(meta), CACHE_TTL);
-    for (var fi = 0; fi < fechasOrd.length; fi++) {
-      var fBuild = fechasOrd[fi];
-      var ayerBuild = '';
-      for (var aj = 0; aj < fechasOrd.length; aj++) {
-        if (fechasOrd[aj] !== fBuild) {
-          ayerBuild = fechasOrd[aj];
-          break;
-        }
-      }
-      if (!ayerBuild) ayerBuild = ayer_();
-      var builtDay =
-        fBuild === fechaHoy
-          ? built
-          : buildDayResult_(loaded.agg, loaded.fechaCounts, fechasOrd, fBuild, hojas, ayerBuild);
-      try {
-        cache.put('todo_v4_day_' + stamp + '_' + fBuild, JSON.stringify(builtDay), CACHE_TTL);
-      } catch (e4) { /* día muy grande para cache */ }
-    }
+    cache.put('todo_v4_day_' + stamp + '_' + fechaHoy, JSON.stringify(built), CACHE_TTL);
     cache.put('todo_v4_stamp', stamp, CACHE_TTL);
   } catch (e3) { /* ok */ }
 

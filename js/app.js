@@ -215,7 +215,10 @@
       QB.export.toast('Sin red · abre la app una vez con internet para guardar el día', 'warn');
     } else {
       document.body.classList.remove('is-ready');
-      showLoadModal('Cargando', 'Última hoja de cosecha…');
+      showLoadModal(
+        'Bienvenido al programa de rendimiento de Q Berries',
+        'Espera un momento, por favor. Estamos trayendo la data.'
+      );
     }
 
     function attachLiveWatchers() {
@@ -318,7 +321,8 @@
         var hojaNom = pack.ultimaHoja || ((pack.hojas || []).find(function (h) { return h.fecha === latest; }) || {}).nombre || '';
         QB.export.toast('Última hoja' + (hojaNom ? ' · ' + hojaNom : '') + ' · ' + n + ' personas', 'ok');
       } else if (!n && !painted) {
-        QB.export.toast('Sin datos del día · contacta operaciones', 'warn');
+        showHojaTardia();
+        QB.export.toast('La hoja tardó demasiado · toca actualizar', 'warn');
       }
     } catch (err) {
       if (cachedHoy && painted) {
@@ -334,7 +338,8 @@
           QB.export.toast('Sin red · sigues con el último guardado', 'warn');
         } else {
           revealApp();
-          QB.export.toast('No se pudo leer la API: ' + (err && err.message ? err.message : 'error'), 'warn');
+          showHojaTardia();
+          QB.export.toast('La hoja tardó demasiado · toca actualizar', 'warn');
         }
       }
     } finally {
@@ -348,6 +353,16 @@
     document.body.classList.add('is-ready');
     hideLoadModal();
     updateConnBadge();
+  }
+
+  function showHojaTardia() {
+    const host = $('heroSummary');
+    if (!host || (state.report && (state.report.data || []).length)) return;
+    host.innerHTML =
+      '<article class="hero-card hero-card--fecha-only" style="padding:1rem 1.05rem">' +
+      '<p class="report-kicker" style="margin:0 0 0.35rem">La hoja no alcanzó a llegar</p>' +
+      '<p class="muted" style="margin:0">Toca la flecha de actualizar. La segunda vez ya trae el día.</p>' +
+      '</article>';
   }
 
   function showSyncBanner(text) {
@@ -3124,8 +3139,6 @@
       if (dismissedAt && Date.now() - dismissedAt < days14) return;
     } catch (_) {}
 
-    if (!isMobileLike()) return;
-
     const kicker = $('installKicker');
     const title = $('installTitle');
     const copy = $('installCopy');
@@ -3167,8 +3180,8 @@
           '<li>Elige <b>Agregar a pantalla de inicio</b></li>' +
           '<li>Confirma con <b>Agregar</b></li>';
       }
-      if (action) action.hidden = true;
-      banner.hidden = false;
+      if (kicker) kicker.textContent = '¿Se puede descargar?';
+      if (title) title.textContent = 'Sí, en el iPhone';
       return;
     }
 
@@ -3185,11 +3198,11 @@
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      if (action) {
-        action.hidden = false;
-        if (actionText) actionText.textContent = 'Instalar app';
-        if (actionIco && QB.icons.download) actionIco.innerHTML = QB.icons.download(16);
-      }
+    if (kicker) kicker.textContent = '¿Se puede descargar?';
+    if (title) title.textContent = 'Sí, en el celular';
+    if (copy) {
+      copy.textContent =
+        'Agrégala a la pantalla de inicio y ábrela como app, sin buscar el enlace.';
       banner.hidden = false;
     });
 

@@ -7003,6 +7003,9 @@ body:has(#modalRoot:not([hidden])) .app-header {
 .install-banner[hidden] {
   display: none !important;
 }
+#installAction[hidden] {
+  display: none !important;
+}
 .install-close {
   position: absolute;
   top: 0.45rem;

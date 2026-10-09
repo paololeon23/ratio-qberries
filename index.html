@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="preload" as="image" href="assets/logo-qberries.png" />
-  <link rel="stylesheet" href="css/app.css?v=m518" />
+  <link rel="stylesheet" href="css/app.css?v=m521" />
   <title>Q Berries · Reportes</title>
   <style>
     /* Hasta que esté lista: solo pantalla de carga (nunca app vacía) */
@@ -61,7 +61,7 @@
     @keyframes qb-spin { to { transform: rotate(360deg); } }
     #loadOverlay h2 {
       margin: 0; font-family: Outfit, system-ui, sans-serif;
-      font-size: 1.28rem; font-weight: 700; color: #16301f; line-height: 1.25;
+      font-size: 1.12rem; font-weight: 700; color: #16301f; line-height: 1.3;
     }
     #loadOverlay p { margin: 0; color: #4a5c52; font-size: 0.98rem; line-height: 1.5; }
     #loadOverlay .load-hint { margin-top: 0.25rem !important; font-size: 0.82rem !important; color: #8a9a90 !important; line-height: 1.45 !important; }
@@ -86,9 +86,9 @@
   <div class="load-overlay" id="loadOverlay" aria-live="assertive" aria-busy="true">
     <div class="load-card" role="dialog" aria-modal="true" aria-labelledby="loadTitle">
       <div class="load-spinner" aria-hidden="true"></div>
-      <h2 id="loadTitle">Cargando</h2>
-      <p id="loadCopy">Espera un momento, por favor…</p>
-      <p class="load-hint">Preparando reportes Licapa</p>
+      <h2 id="loadTitle">Bienvenido al programa de rendimiento de Q Berries</h2>
+      <p id="loadCopy">Espera un momento, por favor. Estamos trayendo la data.</p>
+      <p class="load-hint">En el celular sí se puede descargar. Al terminar, una ventana te indica cómo.</p>
     </div>
   </div>
 
@@ -562,22 +562,22 @@
 
   <script defer src="vendor/echarts.min.js"></script>
   <script defer src="vendor/jspdf.umd.min.js"></script>
-  <script defer src="js/config.js?v=m518"></script>
-  <script defer src="js/workers.js?v=m518"></script>
-  <script defer src="js/plano.js?v=m518"></script>
-  <script defer src="js/api.js?v=m518"></script>
-  <script defer src="js/icons.js?v=m518"></script>
-  <script defer src="js/avatars.js?v=m518"></script>
-  <script defer src="js/jefes-dia.js?v=m518"></script>
-  <script defer src="js/supervisors.js?v=m518"></script>
-  <script defer src="js/historial-data.js?v=m518"></script>
-  <script defer src="js/historial-nombres.js?v=m518"></script>
-  <script defer src="js/historial.js?v=m518"></script>
-  <script defer src="js/descartes.js?v=m518"></script>
-  <script defer src="js/charts.js?v=m518"></script>
-  <script defer src="js/select.js?v=m518"></script>
-  <script defer src="js/export.js?v=m518"></script>
-  <script defer src="js/app.js?v=m518"></script>
+  <script defer src="js/config.js?v=m521"></script>
+  <script defer src="js/workers.js?v=m521"></script>
+  <script defer src="js/plano.js?v=m521"></script>
+  <script defer src="js/api.js?v=m521"></script>
+  <script defer src="js/icons.js?v=m521"></script>
+  <script defer src="js/avatars.js?v=m521"></script>
+  <script defer src="js/jefes-dia.js?v=m521"></script>
+  <script defer src="js/supervisors.js?v=m521"></script>
+  <script defer src="js/historial-data.js?v=m521"></script>
+  <script defer src="js/historial-nombres.js?v=m521"></script>
+  <script defer src="js/historial.js?v=m521"></script>
+  <script defer src="js/descartes.js?v=m521"></script>
+  <script defer src="js/charts.js?v=m521"></script>
+  <script defer src="js/select.js?v=m521"></script>
+  <script defer src="js/export.js?v=m521"></script>
+  <script defer src="js/app.js?v=m521"></script>
   <script>
     window.addEventListener('error', function (e) {
       var box = document.getElementById('toastHost');

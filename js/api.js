@@ -249,6 +249,14 @@ QB.api = {
     return this._dataSyncedAt || '';
   },
 
+  async _refreshOnce(fecha) {
+    return this.cargarTodo({
+      allowCacheFallback: false,
+      fecha: fecha,
+      force: true
+    });
+  },
+
   async refresh(opts) {
     opts = opts || {};
     const prevVer = this._dataVersion || this._versionOf(this._lastPack);
@@ -263,15 +271,21 @@ QB.api = {
     this._redPausaHasta = 0;
 
     try {
-      const pack = await this.cargarTodo({
-        allowCacheFallback: false,
-        fecha: fecha,
-        force: true
-      });
+      const pack = await this._refreshOnce(fecha);
       const ver = this._versionOf(pack);
       const changed = !prevVer || ver !== prevVer;
       return { pack: pack, changed: changed, fromCache: !!pack.fromCache, error: null };
     } catch (err) {
+      /* La primera lectura a veces se corta; el servidor igual guarda y la segunda ya llega. */
+      try {
+        this._redPausaHasta = 0;
+        const pack = await this._refreshOnce(fecha);
+        const ver = this._versionOf(pack);
+        const changed = !prevVer || ver !== prevVer;
+        return { pack: pack, changed: changed, fromCache: !!pack.fromCache, error: null };
+      } catch (err2) {
+        err = err2;
+      }
       if (fallback) {
         return {
           pack: fallback,

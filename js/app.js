@@ -3199,11 +3199,12 @@
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-    if (kicker) kicker.textContent = '¿Se puede descargar?';
-    if (title) title.textContent = 'Sí, en el celular';
-    if (copy) {
-      copy.textContent =
-        'Agrégala a la pantalla de inicio y ábrela como app, sin buscar el enlace.';
+      if (kicker) kicker.textContent = '¿Se puede descargar?';
+      if (title) title.textContent = 'Sí, en el celular';
+      if (copy) {
+        copy.textContent =
+          'Agrégala a la pantalla de inicio y ábrela como app, sin buscar el enlace.';
+      }
       banner.hidden = false;
     });
 

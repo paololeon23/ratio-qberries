@@ -362,7 +362,7 @@ function loadAllSheets_(onlyKey) {
     sheetNames[key0] = name0;
     sheetOrder[key0] = hojaNum_(name0) >= 0 ? hojaNum_(name0) : s;
     var known = fechaMap[name0] || parseSheetFecha_(name0) || '';
-    sheetDisplayFechas[key0] = known || name0;
+    sheetDisplayFechas[key0] = /^\d{4}-\d{2}-\d{2}/.test(String(known)) ? String(known).slice(0, 10) : '';
     if (!targets[s]) fechaCounts[key0] = 0;
   }
 
@@ -391,12 +391,14 @@ function loadAllSheets_(onlyKey) {
     if (iCI >= 0) {
     var sheetFecha = parseSheetFecha_(sh.getName());
     var dominant = dominantFecha_(grid, iFecha);
-    var displayFecha = sheetFecha || dominant || hoy_();
+    var displayFecha = sheetFecha || dominant || '';
     var sheetKey = sheetFecha || ('__hoja__' + s);
     sheetNames[sheetKey] = sh.getName();
-    sheetDisplayFechas[sheetKey] = displayFecha;
-    fechaMap[sh.getName()] = displayFecha;
-    writeFechaMap_(cache, fechaMap);
+    if (/^\d{4}-\d{2}-\d{2}/.test(String(displayFecha))) {
+      sheetDisplayFechas[sheetKey] = String(displayFecha).slice(0, 10);
+      fechaMap[sh.getName()] = sheetDisplayFechas[sheetKey];
+      writeFechaMap_(cache, fechaMap);
+    }
 
     for (var r = 1; r < grid.length; r++) {
       var row = grid[r];

@@ -1827,12 +1827,21 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
     text-wrap: balance;
   }
   .fecha-dd-menu {
-    left: 0;
-    right: 0;
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
     width: 100%;
     min-width: 0;
     max-width: none;
+    margin-top: 0.45rem;
     transform: none;
+    z-index: auto;
+    box-shadow: none;
+  }
+  .hero-summary:has(.fecha-dd.is-open) .hero-banner-section.hero-metric {
+    overflow: hidden;
+    pointer-events: auto;
   }
 }
 @media (max-width: 380px) {
@@ -1923,6 +1932,23 @@ html.is-file-protocol body > *:not(#fileProtocolGate) {
 }
 .fecha-dd.is-open .fecha-dd-menu {
   z-index: 5000;
+}
+@media (max-width: 699px) {
+  .fecha-dd.is-open .fecha-dd-menu {
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin-top: 0.45rem;
+    z-index: auto;
+    box-shadow: none;
+  }
+  .hero-summary:has(.fecha-dd.is-open) .hero-banner-section.hero-metric {
+    overflow: hidden;
+  }
 }
 .fecha-dd-opt:last-of-type {
   margin-bottom: 0.15rem;

@@ -235,12 +235,14 @@
             state.fechaOpts = (p.hojas || [])
               .filter((h) => h.fecha)
               .map((h) => {
-                const iso = h.fechaDisplay || h.fecha;
-                const info = fmtFechaClara(iso);
+                const iso = toIsoDate(h.fechaDisplay) || toIsoDate(h.fecha);
+                const info = iso ? fmtFechaClara(iso) : null;
+                const nombre = String(h.nombre || '').trim();
                 return {
                   value: h.fecha,
                   display: iso,
-                  label: info.fullLong || info.full,
+                  nombre: nombre,
+                  label: info ? info.fullLong || info.full : nombre || h.fecha,
                   sub: h.filas ? h.filas + ' filas' : '',
                   filas: h.filas
                 };
@@ -586,12 +588,14 @@
     state.fechaOpts = (pack.hojas || [])
       .filter((h) => h.fecha)
       .map((h) => {
-        const iso = h.fechaDisplay || h.fecha;
-        const info = fmtFechaClara(iso);
+        const iso = toIsoDate(h.fechaDisplay) || toIsoDate(h.fecha);
+        const info = iso ? fmtFechaClara(iso) : null;
+        const nombre = String(h.nombre || '').trim();
         return {
           value: h.fecha,
           display: iso,
-          label: info.fullLong || info.full,
+          nombre: nombre,
+          label: info ? info.fullLong || info.full : nombre || h.fecha,
           sub: h.filas ? h.filas + ' filas' : '',
           filas: h.filas
         };
@@ -644,6 +648,11 @@
     const menu = document.getElementById('fechaDdMenu');
     const btn = document.getElementById('fechaDdBtn');
     if (!menu || !btn || menu.hidden) return;
+    const narrow = window.matchMedia && window.matchMedia('(max-width: 699px)').matches;
+    if (narrow) {
+      clearFechaMenuPos();
+      return;
+    }
     const r = btn.getBoundingClientRect();
     const gap = 8;
     const vw = window.innerWidth || document.documentElement.clientWidth || 360;
@@ -1236,7 +1245,6 @@
     const prev = state.fecha;
     const label = fechaLabelText(want);
     const mine = ++_fechaReq;
-    paintFechaChoice(want);
 
     const showReady = (pack) => {
       if (mine !== _fechaReq) return;
@@ -1247,17 +1255,14 @@
 
     const instant = QB.api.getPackForFecha(want);
     if (instant && (instant.data || []).length) {
+      paintFechaChoice(want);
       markFechaWait(false);
       showReady(instant);
       return;
     }
 
-    markFechaWait(true);
-    startSyncProgress({
-      fast: true,
-      startText: 'Abriendo ' + label + '…',
-      msgs: ['Abriendo ' + label + '…', 'Leyendo jarras…', 'Armando el día…', 'Ya casi…']
-    });
+    /* El día en pantalla no cambia hasta que llegue. El aviso avisa y sigue. */
+    QB.export.toast('Te avisamos cuando cargue ' + label + '. Un momento.', 'ok');
 
     try {
       const pack = await QB.api.cargarTodo({
@@ -1267,21 +1272,15 @@
       });
       if (mine !== _fechaReq) return;
       if (pack && (pack.data || []).length) {
-        finishSyncProgress('Listo · ' + label);
+        paintFechaChoice(want);
         showReady(pack);
+        QB.export.toast('Ya está ' + label, 'ok');
       } else {
-        state.fecha = prev;
-        paintFechaChoice(prev);
-        markFechaWait(false);
-        finishSyncProgress('Sin datos para ' + label);
         QB.export.toast('Sin datos para ' + label, 'warn');
       }
     } catch (err) {
       if (mine !== _fechaReq) return;
-      state.fecha = prev;
       paintFechaChoice(prev);
-      renderHero(state.report || { kpis: {} });
-      finishSyncProgress('No se pudo abrir ' + label);
       QB.export.toast('No se pudo abrir ' + label, 'warn');
     }
   }
@@ -4000,12 +3999,13 @@
             <p class="fecha-dd-menu-title">Seleccionar día</p>
             ${opts
               .map((o) => {
-                const displayIso = o.display || o.value;
-                const info = fmtFechaClara(displayIso);
+                const info = o.display ? fmtFechaClara(o.display) : null;
                 const active = o.value === state.fecha ? ' is-active' : '';
                 const filasMeta = o.filas ? fmt(o.filas) + ' registros' : '';
                 const varLabel = variedadLabelForFecha(o.value);
-                const title = info.fullLong + (varLabel ? ' · ' + varLabel : '') + (filasMeta ? ' · ' + filasMeta : '');
+                const hojaNom = o.nombre || '';
+                const extra = [hojaNom, varLabel].filter(Boolean).join(' · ');
+                const title = (info ? info.fullLong : hojaNom) + (extra ? ' · ' + extra : '') + (filasMeta ? ' · ' + filasMeta : '');
                 return `<button
                   type="button"
                   class="fecha-dd-opt${active}"
@@ -4015,9 +4015,9 @@
                   title="${escapeAttr(title)}"
                 >
                   <span class="fecha-dd-opt-main">
-                    <span class="fecha-dd-opt-week">${escapeHtml(info.weekdayLong || info.weekday)}</span>
-                    <span class="fecha-dd-opt-line">${escapeHtml(info.line || info.short)}</span>
-                    <span class="fecha-dd-opt-var">${escapeHtml(varLabel)}</span>
+                    <span class="fecha-dd-opt-week">${escapeHtml(info ? info.weekdayLong || info.weekday : hojaNom)}</span>
+                    <span class="fecha-dd-opt-line">${escapeHtml(info ? info.line || info.short : hojaNom)}</span>
+                    <span class="fecha-dd-opt-var">${escapeHtml(extra)}</span>
                   </span>
                   ${filasMeta ? `<span class="fecha-dd-opt-meta">${escapeHtml(filasMeta)}</span>` : ''}
                   <span class="fecha-dd-opt-check" aria-hidden="true"></span>
